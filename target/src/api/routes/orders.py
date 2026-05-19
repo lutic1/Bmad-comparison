@@ -1,11 +1,11 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
-from api.models import Order, OrderItem, User
+from api.models import DiscountCode, Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -22,6 +22,15 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
+
+    @field_validator("discount_code", mode="before")
+    @classmethod
+    def normalise_discount_code(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip().upper()
+        return stripped if stripped else None
 
 
 class OrderItemOut(BaseModel):
@@ -37,6 +46,7 @@ class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    discount_code: str | None
     created_at: str
     items: list[OrderItemOut]
 
@@ -54,7 +64,7 @@ def create_order(
     db.add(order)
     db.flush()
 
-    total = 0
+    gross_total = 0
     for item in payload.items:
         unit_price_cents = _to_cents(item.unit_price)
         line = OrderItem(
@@ -64,9 +74,19 @@ def create_order(
             unit_price=unit_price_cents,
         )
         db.add(line)
-        total += unit_price_cents * item.quantity
+        gross_total += unit_price_cents * item.quantity
 
-    order.total = total
+    if payload.discount_code:
+        dc = db.query(DiscountCode).filter_by(code=payload.discount_code).first()
+        if dc is None:
+            raise HTTPException(status_code=422, detail="Invalid discount code")
+        discount_cents = round(gross_total * dc.percentage / 100)
+        order.total = gross_total - discount_cents
+        order.discount_code = dc.code
+    else:
+        order.total = gross_total
+        order.discount_code = None
+
     db.commit()
     db.refresh(order)
 
@@ -74,6 +94,7 @@ def create_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        discount_code=order.discount_code,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
@@ -98,6 +119,7 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        discount_code=order.discount_code,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
