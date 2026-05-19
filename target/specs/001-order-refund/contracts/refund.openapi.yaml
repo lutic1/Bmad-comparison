@@ -1,0 +1,105 @@
+openapi: 3.1.0
+info:
+  title: Order Refund
+  version: "0.1.0"
+  description: |
+    Contract for the order-refund feature. This file documents only the
+    new endpoint added by this feature; the rest of the service's
+    surface is unchanged.
+
+paths:
+  /orders/{order_id}/refund:
+    post:
+      operationId: refundOrder
+      summary: Refund an order
+      tags: [orders]
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: X-User-Id
+          in: header
+          required: true
+          description: Identifies the calling user (project's auth scheme).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "201":
+          description: Refund created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundOut"
+        "401":
+          description: Missing or invalid X-User-Id header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missing:
+                  value: { detail: "missing X-User-Id header" }
+                unknown:
+                  value: { detail: "unknown user" }
+        "404":
+          description: |
+            Order does not exist OR exists but belongs to another user.
+            The two cases are intentionally indistinguishable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "order not found"
+        "409":
+          description: Order has already been refunded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "order already refunded"
+        "422":
+          description: |
+            Refund window (30 days from order creation) has expired.
+            Also the FastAPI default status for path/header validation
+            errors, which use FastAPI's own error schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: "refund window expired"
+
+components:
+  schemas:
+    RefundOut:
+      type: object
+      required: [id, order_id, amount, created_at]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+          description: Refund record identity.
+        order_id:
+          type: integer
+          minimum: 1
+          description: The order this refund applies to.
+        amount:
+          type: integer
+          minimum: 0
+          description: Refunded amount in cents (copied from Order.total at refund time).
+        created_at:
+          type: string
+          format: date-time
+          description: When the refund was recorded (UTC, ISO-8601).
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
