@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 from api import deps
 from api.main import app
 from api.models import Base
+from sqlalchemy.orm import sessionmaker as _sessionmaker
 
 
 @pytest.fixture
@@ -40,3 +41,11 @@ def client(db_engine):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def db(db_engine):
+    Session = _sessionmaker(bind=db_engine)
+    session = Session()
+    yield session
+    session.close()
