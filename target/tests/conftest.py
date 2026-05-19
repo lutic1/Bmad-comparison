@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from api import deps
 from api.main import app
+from api.middleware import rate_limit
 from api.models import Base
 
 
@@ -40,3 +41,4 @@ def client(db_engine):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+    rate_limit.reset()
