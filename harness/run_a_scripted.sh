@@ -261,7 +261,14 @@ fi
 # --- 6. record row --------------------------------------------------------
 if [[ "$RECORD" == 0 ]]; then
     echo "--no-record set; skipping harness/run.py invocation."
-    echo "Branch $BRANCH retained for inspection."
+    # still park results artifacts on base — see end of script for details
+    if [[ -n "$(git -C "$REPO_ROOT" status --porcelain results/)" ]]; then
+        git -C "$REPO_ROOT" stash push -u -m "scripted-runner: $BRANCH results/" -- results/ >/dev/null
+        STASH_REF="$(git -C "$REPO_ROOT" stash list | head -1 | cut -d: -f1)"
+        git -C "$REPO_ROOT" checkout "$BASE" >/dev/null 2>&1
+        git -C "$REPO_ROOT" stash pop "$STASH_REF" >/dev/null
+        echo "→ parked results/ on $BASE; inspect, then call harness/run.py --skip-branch --branch-name $BRANCH."
+    fi
     exit 0
 fi
 
