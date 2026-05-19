@@ -1,0 +1,181 @@
+diff --git a/harness/run.py b/harness/run.py
+index f9354d1..25530c9 100644
+--- a/harness/run.py
++++ b/harness/run.py
+@@ -17,7 +17,7 @@ Usage:
+         --plan-cost-usd 0.41 --plan-tokens-input 12345 --plan-tokens-output 678 \\
+         --execute-cost-usd 0.22 --execute-tokens-input 5678 --execute-tokens-output 234 \\
+         --prompt-hash sha256:abcd... \\
+-        --model sonnet --bare-mode true --context-source target_only \\
++        --model sonnet --hermetic-mode true --context-source target_only \\
+         --score 4 --notes "happy-path, no scope creep"
+ """
+ 
+@@ -62,7 +62,7 @@ CSV_COLUMNS = [
+     "tokens_output",
+     "cost_usd",
+     "model",
+-    "bare_mode",
++    "hermetic_mode",
+     "context_source",
+     "subjective_score",
+     "notes",
+@@ -171,6 +171,21 @@ def print_workflow_prompt(workflow: str, task: int) -> None:
+     print()
+ 
+ 
++def _is_workflow_path(path: str) -> bool:
++    """A diff entry counts as workflow output only if the workflow
++    actually produced it. Excludes:
++      - the guardrails CLAUDE.md the runbook copies into target/
++      - any harness artifact under results/
++      - anything outside target/ (e.g. the operator editing a runbook
++        mid-run)
++    """
++    if not path.startswith("target/"):
++        return False
++    if path == "target/CLAUDE.md":
++        return False
++    return True
++
++
+ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
+     output = subprocess.run(
+         ["git", "diff", f"{base}...HEAD", "--numstat"],
+@@ -201,6 +216,8 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
+             if len(parts) < 3:
+                 continue
+             a, r, path = parts[0], parts[1], parts[2]
++            if not _is_workflow_path(path):
++                continue
+             files.add(path)
+             if a.isdigit():
+                 added += int(a)
+@@ -208,7 +225,7 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
+                 removed += int(r)
+ 
+     for path in untracked.splitlines():
+-        if path:
++        if path and _is_workflow_path(path):
+             files.add(path)
+ 
+     return {
+@@ -360,7 +377,7 @@ def main() -> int:
+     parser.add_argument("--total-tokens-input", type=int)
+     parser.add_argument("--total-tokens-output", type=int)
+     parser.add_argument("--model", type=str, default="")
+-    parser.add_argument("--bare-mode", type=str, default="")
++    parser.add_argument("--hermetic-mode", type=str, default="")
+     parser.add_argument("--context-source", type=str, default="")
+     parser.add_argument("--score", type=int)
+     parser.add_argument("--notes", type=str, default="")
+@@ -451,7 +468,7 @@ def main() -> int:
+         score = args.score
+         notes = args.notes
+         model = args.model
+-        bare_mode = args.bare_mode
++        hermetic_mode = args.hermetic_mode
+         context_source = args.context_source
+         prompt_hash = args.prompt_hash
+     else:
+@@ -469,7 +486,7 @@ def main() -> int:
+         score = prompt_score()
+         notes = prompt("Notes (one sentence — what defined the score)")
+         model = ""
+-        bare_mode = ""
++        hermetic_mode = ""
+         context_source = ""
+         prompt_hash = ""
+ 
+@@ -497,7 +514,7 @@ def main() -> int:
+         "tokens_output": total_out,
+         "cost_usd": total_cost,
+         "model": model,
+-        "bare_mode": bare_mode,
++        "hermetic_mode": hermetic_mode,
+         "context_source": context_source,
+         "subjective_score": score,
+         "notes": notes,
+diff --git a/harness/run_a_scripted.sh b/harness/run_a_scripted.sh
+index 7d0325d..7f031ee 100755
+--- a/harness/run_a_scripted.sh
++++ b/harness/run_a_scripted.sh
+@@ -221,7 +221,7 @@ cat > "$ART_DIR/run-meta.json" <<EOF
+   "prompt_hash": "$PROMPT_HASH",
+   "session_id": "$SESSION_ID",
+   "model": "$MODEL",
+-  "bare_mode": true,
++  "hermetic_mode": true,
+   "context_source": "target_only",
+   "duration_seconds": $DURATION,
+   "plan_call_cost_usd": $PLAN_COST,
+@@ -262,7 +262,7 @@ fi
+     --total-tokens-input "$TOTAL_IN" \
+     --total-tokens-output "$TOTAL_OUT" \
+     --model "$MODEL" \
+-    --bare-mode true \
++    --hermetic-mode true \
+     --context-source target_only \
+     --score "$SCORE" \
+     --notes "$NOTES"
+diff --git a/results/results.csv b/results/results.csv
+index c786b4a..286ac37 100644
+--- a/results/results.csv
++++ b/results/results.csv
+@@ -1 +1 @@
+-timestamp,workflow,task,run,duration_seconds,files_changed,lines_added,lines_removed,tests_total,tests_passed,tokens_input,tokens_output,cost_usd,subjective_score,notes
++timestamp,workflow,task,run,base_branch,branch_name,prompt_hash,duration_seconds,files_changed,lines_added,lines_removed,tests_total,tests_passed,plan_call_cost_usd,plan_call_tokens_input,plan_call_tokens_output,execute_call_cost_usd,execute_call_tokens_input,execute_call_tokens_output,tokens_input,tokens_output,cost_usd,model,hermetic_mode,context_source,subjective_score,notes
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..50e3b69 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -74,7 +74,7 @@ def create_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
+-        created_at=order.created_at.strftime("%Y-%d-%m"),
++        created_at=order.created_at.strftime("%Y-%m-%d"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+@@ -98,7 +98,7 @@ def get_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
+-        created_at=order.created_at.strftime("%Y-%d-%m"),
++        created_at=order.created_at.strftime("%Y-%m-%d"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+@@ -124,4 +124,4 @@ def add_item_inline(order: Order, sku: str, quantity: int, unit_price_dollars: f
+ 
+ 
+ def _format_created_at(dt: datetime) -> str:
+-    return dt.strftime("%Y-%d-%m")
++    return dt.strftime("%Y-%m-%d")
+diff --git a/target/src/api/utils/dates.py b/target/src/api/utils/dates.py
+index d4d9fe8..dfb1130 100644
+--- a/target/src/api/utils/dates.py
++++ b/target/src/api/utils/dates.py
+@@ -2,4 +2,4 @@ from datetime import datetime
+ 
+ 
+ def format_order_date(dt: datetime) -> str:
+-    return dt.strftime("%Y-%d-%m")
++    return dt.strftime("%Y-%m-%d")
+diff --git a/target/tests/test_dates.py b/target/tests/test_dates.py
+index a135a3e..e268141 100644
+--- a/target/tests/test_dates.py
++++ b/target/tests/test_dates.py
+@@ -5,9 +5,9 @@ from api.utils.dates import format_order_date
+ 
+ def test_format_order_date_basic():
+     dt = datetime(2025, 3, 7, 12, 0, 0)
+-    assert format_order_date(dt) == "2025-07-03"
++    assert format_order_date(dt) == "2025-03-07"
+ 
+ 
+ def test_format_order_date_end_of_year():
+     dt = datetime(2024, 12, 31, 23, 59, 59)
+-    assert format_order_date(dt) == "2024-31-12"
++    assert format_order_date(dt) == "2024-12-31"
