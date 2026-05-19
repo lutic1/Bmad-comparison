@@ -17,16 +17,19 @@
 #      captured numeric values; the operator (or a follow-up step) fills
 #      in subjective score and notes via --score / --notes
 #
-# All claude invocations use --bare --model sonnet --add-dir target so
-# the run is isolated from the operator's global Claude Code config and
-# uses a typical, economically-realistic model.
+# Every claude subprocess runs against a fresh empty HOME with
+# CLAUDE_CODE_OAUTH_TOKEN sourced from a file (default:
+# ~/.config/claude-bench/oauth-token). This is the "clean HOME +
+# OAuth token" hermeticity pattern — no user-level CLAUDE.md, skills,
+# agents, settings, or memory files load. The model is pinned to Sonnet.
 #
 # Usage:
 #   harness/run_a_scripted.sh --task N --run M \
 #       --score INT --notes "one sentence"
 #
 # Pass --no-record to skip the harness/run.py call (useful for dry
-# runs and inspection).
+# runs and inspection). Pass --token-file PATH to override the default
+# token file location.
 
 set -euo pipefail
 
@@ -39,6 +42,7 @@ SCORE=""
 NOTES=""
 RECORD=1
 MODEL="sonnet"
+TOKEN_FILE="${CLAUDE_BENCH_TOKEN_FILE:-$HOME/.config/claude-bench/oauth-token}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -47,9 +51,10 @@ while [[ $# -gt 0 ]]; do
         --score) SCORE="$2"; shift 2 ;;
         --notes) NOTES="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
+        --token-file) TOKEN_FILE="$2"; shift 2 ;;
         --no-record) RECORD=0; shift ;;
         -h|--help)
-            sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
@@ -69,6 +74,17 @@ fi
 VENV_PY="$REPO_ROOT/target/.venv/bin/python"
 [[ -x "$VENV_PY" ]] || {
     echo "venv python not found at $VENV_PY — run pip install -e .[dev] first" >&2
+    exit 2
+}
+
+[[ -f "$TOKEN_FILE" ]] || {
+    echo "OAuth token file not found at $TOKEN_FILE" >&2
+    echo "Run 'claude setup-token' and save the token there (mode 600)." >&2
+    exit 2
+}
+CLAUDE_OAUTH_TOKEN="$(cat "$TOKEN_FILE")"
+[[ -n "$CLAUDE_OAUTH_TOKEN" ]] || {
+    echo "OAuth token file at $TOKEN_FILE is empty" >&2
     exit 2
 }
 
@@ -109,13 +125,21 @@ PROMPT="$(awk '
 PROMPT_HASH="sha256:$(printf '%s' "$PROMPT" | shasum -a 256 | awk '{print $1}')"
 
 # --- 3. plan call ---------------------------------------------------------
+# Hermetic pattern: one fresh empty HOME used for BOTH calls (plan and
+# resume-execute), since --resume needs the session state Claude wrote
+# under HOME/.claude during the plan call. OAuth token sourced from a
+# file outside HOME. No user-level CLAUDE.md, skills, agents, settings
+# or memory files load. --bare can't be used here because it forbids
+# OAuth tokens and demands an Anthropic API key.
 START_TS=$(date +%s)
-echo "→ plan call (claude -p --permission-mode plan, --bare --model $MODEL)"
+CLEAN_HOME="$(mktemp -d -t claude-bench-home-XXXXXX)"
+trap 'rm -rf "$CLEAN_HOME"' EXIT
+echo "→ plan call (clean HOME + OAuth, --permission-mode plan, --model $MODEL)"
 PLAN_JSON_PATH="$ART_DIR/plan-call.json"
 (
     cd "$REPO_ROOT/target"
+    HOME="$CLEAN_HOME" CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_OAUTH_TOKEN" \
     claude --print \
-        --bare \
         --model "$MODEL" \
         --add-dir "$REPO_ROOT/target" \
         --permission-mode plan \
@@ -156,12 +180,14 @@ echo "  session: $SESSION_ID"
 echo "  plan cost: \$$PLAN_COST  in:$PLAN_IN out:$PLAN_OUT"
 
 # --- 4. execute call ------------------------------------------------------
-echo "→ execute call (claude -p --resume --permission-mode acceptEdits)"
+# Re-use CLEAN_HOME so --resume can find the session state Claude wrote
+# during the plan call.
+echo "→ execute call (clean HOME + OAuth, --resume --permission-mode acceptEdits)"
 EXEC_JSON_PATH="$ART_DIR/execute-call.json"
 (
     cd "$REPO_ROOT/target"
+    HOME="$CLEAN_HOME" CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_OAUTH_TOKEN" \
     claude --print \
-        --bare \
         --model "$MODEL" \
         --add-dir "$REPO_ROOT/target" \
         --resume "$SESSION_ID" \
