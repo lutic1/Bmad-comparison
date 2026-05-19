@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
-from api.models import Order, OrderItem, User
+from api.models import DiscountCode, Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -22,6 +22,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -37,6 +38,9 @@ class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    original_total: int
+    discount_code: str | None
+    discount_percentage: int | None
     created_at: str
     items: list[OrderItemOut]
 
@@ -66,7 +70,30 @@ def create_order(
         db.add(line)
         total += unit_price_cents * item.quantity
 
+    original_total = total
+
+    applied_code: str | None = None
+    applied_pct: int | None = None
+
+    if payload.discount_code:
+        dc = db.query(DiscountCode).filter(
+            DiscountCode.code == payload.discount_code.upper()
+        ).one_or_none()
+        if dc is None:
+            raise HTTPException(status_code=400, detail="discount code not found")
+        if not dc.is_active:
+            raise HTTPException(status_code=400, detail="discount code is not active")
+        if dc.max_uses is not None and dc.times_used >= dc.max_uses:
+            raise HTTPException(status_code=400, detail="discount code has been fully redeemed")
+        total = original_total * (100 - dc.percentage) // 100
+        dc.times_used += 1
+        applied_code = dc.code
+        applied_pct = dc.percentage
+
     order.total = total
+    order.original_total = original_total
+    order.discount_code = applied_code
+    order.discount_percentage = applied_pct
     db.commit()
     db.refresh(order)
 
@@ -74,6 +101,9 @@ def create_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        original_total=order.original_total,
+        discount_code=order.discount_code,
+        discount_percentage=order.discount_percentage,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
@@ -98,6 +128,9 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        original_total=order.original_total,
+        discount_code=order.discount_code,
+        discount_percentage=order.discount_percentage,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)

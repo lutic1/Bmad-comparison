@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -28,6 +28,9 @@ class Order(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Stored as integer cents. See _to_cents in routes/orders.py.
     total: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    discount_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    discount_percentage: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
@@ -48,3 +51,14 @@ class OrderItem(Base):
     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="items")
+
+
+class DiscountCode(Base):
+    __tablename__ = "discount_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    percentage: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    times_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
