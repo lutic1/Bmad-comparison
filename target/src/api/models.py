@@ -8,6 +8,19 @@ class Base(DeclarativeBase):
     pass
 
 
+class DiscountCode(Base):
+    __tablename__ = "discount_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    discount_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+    orders: Mapped[list["Order"]] = relationship(back_populates="discount_code")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -31,11 +44,16 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+    discount_code_id: Mapped[int | None] = mapped_column(
+        ForeignKey("discount_codes.id"), nullable=True, default=None
+    )
+    discount_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     user: Mapped[User] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
+    discount_code: Mapped[DiscountCode | None] = relationship(back_populates="orders")
 
 
 class OrderItem(Base):

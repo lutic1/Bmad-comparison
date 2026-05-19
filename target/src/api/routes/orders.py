@@ -37,6 +37,8 @@ class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    discount_code: str | None = None
+    discount_amount_cents: int = 0
     created_at: str
     items: list[OrderItemOut]
 
