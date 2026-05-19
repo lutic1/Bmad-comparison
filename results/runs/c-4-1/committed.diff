@@ -1,0 +1,947 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/_bmad-output/implementation-artifacts/1-1-discount-code-data-layer.md b/target/_bmad-output/implementation-artifacts/1-1-discount-code-data-layer.md
+new file mode 100644
+index 0000000..15a51fc
+--- /dev/null
++++ b/target/_bmad-output/implementation-artifacts/1-1-discount-code-data-layer.md
+@@ -0,0 +1,87 @@
++# Story 1.1: Discount Code Data Layer
++
++Status: review
++
++## Story
++
++As a developer laying the foundation for the discount-code feature,
++I want to add the `DiscountCode` ORM model, extend `Order` with two nullable audit columns, seed the three canonical codes at startup, and expose test fixtures that seed the same codes into the in-memory test database,
++so that Story 1.2 can wire discount logic against a real schema with no further model work.
++
++## Acceptance Criteria
++
++1. A `DiscountCode` SQLAlchemy model exists in `src/api/models.py` with columns `id` (PK), `code` (String(64), unique, not-null), `percentage` (Integer, not-null). It inherits from `Base` so `Base.metadata.create_all` creates the table automatically.
++2. The `Order` model in `src/api/models.py` has two new nullable columns: `discount_code` (String(64), nullable, default None) and `discount_pct` (Integer, nullable, default None).
++3. `src/api/main.py` calls a private `_seed_discount_codes()` function immediately after `Base.metadata.create_all` inside the `lifespan` context manager. The function inserts `("SAVE5", 5)`, `("SAVE10", 10)`, `("SAVE20", 20)` if they do not already exist. It is idempotent (safe to call on every restart).
++4. `tests/conftest.py` gains two new fixtures: `db(db_engine)` — yields a `Session` bound to the test engine — and `discount_codes(db)` — inserts the same three canonical codes and commits. Both fixtures follow the existing teardown pattern (close in `finally`).
++5. `pytest` passes with zero failures after this story (all pre-existing tests still green; no new tests required for this story).
++
++## Tasks / Subtasks
++
++- [x] Add `DiscountCode` model to `src/api/models.py` (AC: 1)
++  - [x] Place after `OrderItem` class; inherit from `Base`
++  - [x] Columns: `id` Integer PK, `code` String(64) unique not-null, `percentage` Integer not-null
++  - [x] Store codes in UPPER CASE by convention (enforced at seed time; no DB constraint needed)
++- [x] Extend `Order` model with two nullable columns (AC: 2)
++  - [x] `discount_code: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)`
++  - [x] `discount_pct: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)`
++  - [x] Place after `created_at` field
++- [x] Add `_seed_discount_codes()` and wire into `lifespan` in `src/api/main.py` (AC: 3)
++  - [x] Import `DiscountCode` from `api.models` and `SessionLocal` from `api.deps`
++  - [x] Helper queries each code with `.one_or_none()`; inserts only if absent; single `db.commit()`
++  - [x] Call `_seed_discount_codes()` on the line immediately after `Base.metadata.create_all(bind=engine)`
++- [x] Add `db` and `discount_codes` fixtures to `tests/conftest.py` (AC: 4)
++  - [x] `db` fixture: `sessionmaker(bind=db_engine, ...)()`, yield, close in finally
++  - [x] `discount_codes` fixture: add three `DiscountCode` rows, `db.commit()`
++  - [x] Import `DiscountCode` from `api.models` at top of conftest
++- [x] Run `pytest` and confirm all existing tests pass (AC: 5)
++
++## Dev Notes
++
++**Critical conventions from the codebase — read before touching any file:**
++
++- **No migrations.** Schema is rebuilt from `Base.metadata.create_all` at startup. Adding `DiscountCode` and the two `Order` columns requires only Python changes; the operator wipes `app.db` between runs.
++- **`SessionLocal` is in `api.deps`**, not `api.main`. Import it from there for `_seed_discount_codes()`.
++- **`autoflush=False, autocommit=False`** on `SessionLocal` — be explicit: flush/commit manually.
++- **`db_engine` fixture uses `StaticPool`** (in-memory SQLite). The `db` fixture must bind to that same engine, not create a new one.
++- **Do NOT use `with SessionLocal() as db:`** in `_seed_discount_codes()` unless `SessionLocal` supports context manager protocol — the existing codebase uses explicit `.close()` in `finally`. Check `deps.py` before choosing the pattern.
++- **`DiscountCode` must appear in `src/api/models.py` before it is imported anywhere else** — add it after `OrderItem` to keep related models together.
++- **`discount_codes` fixture depends on `db`, which depends on `db_engine`**, which depends on nothing. The `client` fixture also depends on `db_engine`. pytest handles this correctly; no circular dependency.
++- **Dead code at bottom of `orders.py`** (`adjust_total`, `add_item_inline`, `_format_created_at`) — do not touch or replicate these functions.
++
++### Project Structure Notes
++
++- `src/api/models.py` — extend in-place; no new files
++- `src/api/main.py` — extend `lifespan`; add `_seed_discount_codes()` as module-level private function
++- `tests/conftest.py` — append two fixtures at the bottom
++
++### References
++
++- Architecture §2 Data Model Changes [Source: `_bmad-output/planning-artifacts/architecture.md#2-data-model-changes`]
++- Architecture §4 Seeding [Source: `_bmad-output/planning-artifacts/architecture.md#4-seeding`]
++- Architecture §6 File Change Summary [Source: `_bmad-output/planning-artifacts/architecture.md#6-file-change-summary`]
++- PRD FR-1 Discount code storage [Source: `_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/prd.md#fr-1`]
++
++## Dev Agent Record
++
++### Agent Model Used
++
++claude-sonnet-4-6
++
++### Debug Log References
++
++- pytest runner located at `.venv/bin/pytest` (not on PATH)
++
++### Completion Notes List
++
++- Added `DiscountCode` model to `src/api/models.py` after `OrderItem`; inherits `Base`; `code` unique String(64), `percentage` Integer
++- Added `discount_code` (String(64), nullable) and `discount_pct` (Integer, nullable) columns to `Order` model after `created_at`
++- Added `_seed_discount_codes()` to `src/api/main.py`; uses explicit try/finally pattern matching `get_db()`; called in `lifespan` after `create_all`
++- Added `db` and `discount_codes` fixtures to `tests/conftest.py`; `db` binds to test engine via `sessionmaker`; `discount_codes` inserts SAVE5/SAVE10/SAVE20
++- All 11 existing tests pass; 0 regressions
++
++### File List
++
++- `src/api/models.py`
++- `src/api/main.py`
++- `tests/conftest.py`
+diff --git a/target/_bmad-output/implementation-artifacts/1-2-discount-code-api-integration.md b/target/_bmad-output/implementation-artifacts/1-2-discount-code-api-integration.md
+new file mode 100644
+index 0000000..83bc94f
+--- /dev/null
++++ b/target/_bmad-output/implementation-artifacts/1-2-discount-code-api-integration.md
+@@ -0,0 +1,106 @@
++# Story 1.2: Discount Code API Integration
++
++Status: done
++
++## Story
++
++As an API consumer placing an order,
++I want to supply an optional `discount_code` field on `POST /orders` that is validated against the `discount_codes` table and reduces my order total by the associated percentage,
++so that the discounted total is persisted and returned in the response, and invalid codes are rejected clearly before any order is created.
++
++## Acceptance Criteria
++
++1. `OrderCreate` in `src/api/routes/orders.py` accepts an optional field `discount_code: str | None = None`. Omitting it (or passing `null`) leaves the existing order-creation flow completely unchanged.
++2. When `discount_code` is provided, `create_order` normalises it with `.strip().upper()`, queries `DiscountCode` for an exact match, and raises `HTTPException(status_code=422, detail=f"invalid discount code: {payload.discount_code!r}")` if no match is found. No order row is created on rejection.
++3. When a valid code is found, `order.total = round(original_total_cents * (1 - discount_pct / 100))`. `order.discount_code` is set to the stored (UPPER CASE) code string; `order.discount_pct` is set to the integer percentage. Both fields persist to the DB.
++4. `OrderOut` in `src/api/routes/orders.py` adds `discount_code: str | None = None` and `discount_pct: int | None = None`. Both `create_order` and `get_order` thread these fields explicitly through every `OrderOut(...)` constructor call.
++5. `GET /orders/{id}` returns the correct `discount_code` and `discount_pct` for a previously discounted order (and `null` for both fields on a non-discounted order).
++6. All 7 tests listed below are added to `tests/test_orders.py` and pass. All pre-existing tests continue to pass.
++
++### Tests required (AC: 6)
++
++| Test function | Fixture(s) | Scenario | Key assertion |
++|---|---|---|---|
++| `test_discount_no_code_regression` | `client` | POST without `discount_code` | `total` == 1998, `discount_code` is null, `discount_pct` is null |
++| `test_discount_5pct` | `client, discount_codes` | SAVE5 on 2×$9.99 | `total == 1898` (`round(1998 * 0.95)`), `discount_pct == 5` |
++| `test_discount_10pct` | `client, discount_codes` | SAVE10 on 2×$9.99 | `total == 1798` (`round(1998 * 0.90)`), `discount_pct == 10` |
++| `test_discount_20pct` | `client, discount_codes` | SAVE20 on 2×$9.99 | `total == 1598` (`round(1998 * 0.80)`), `discount_pct == 20` |
++| `test_discount_unknown_code` | `client, discount_codes` | `discount_code: "BOGUS"` | HTTP 422; zero orders in DB |
++| `test_discount_case_insensitive` | `client, discount_codes` | `discount_code: "save10"` | HTTP 201, `discount_pct == 10` |
++| `test_discount_fields_on_get_order` | `client, discount_codes` | GET after discounted POST | `discount_code == "SAVE10"`, `discount_pct == 10` |
++
++## Tasks / Subtasks
++
++- [x] Extend `OrderCreate` with optional `discount_code` field (AC: 1)
++  - [x] Add `discount_code: str | None = None` after the `items` field
++- [x] Extend `OrderOut` with two nullable fields (AC: 4)
++  - [x] Add `discount_code: str | None = None` and `discount_pct: int | None = None` at the end of the class
++  - [x] `OrderOut` does NOT use `from_attributes = True` — both fields must be passed explicitly in every constructor call
++- [x] Update `create_order` handler (AC: 2, 3)
++  - [x] Add `from api.models import DiscountCode, Order, OrderItem, User` (add `DiscountCode` to existing import)
++  - [x] Before the `Order(...)` insert: if `payload.discount_code` is not None, normalise → query → raise 422 on miss; record `discount_pct` and `applied_code`
++  - [x] After accumulating `total`: if discount applies, `total = round(total * (1 - discount_pct / 100))`
++  - [x] Set `order.discount_code = applied_code` and `order.discount_pct = discount_pct` before `db.commit()`
++  - [x] Update the `return OrderOut(...)` call to include `discount_code=order.discount_code, discount_pct=order.discount_pct`
++- [x] Update `get_order` handler (AC: 4, 5)
++  - [x] Update its `return OrderOut(...)` call to include `discount_code=order.discount_code, discount_pct=order.discount_pct`
++  - [x] No other logic change needed — fields are already on the ORM object
++- [x] Add 7 tests to `tests/test_orders.py` (AC: 6)
++  - [x] Follow the `_make_user(client, email=..., name=...)` helper pattern for user creation; use unique emails
++  - [x] Tests using discount codes declare `discount_codes` as a fixture parameter (seeds SAVE5/10/20 via the `db` fixture from Story 1.1)
++  - [x] Use `round(1998 * 0.X)` directly in assertions — do not hardcode magic numbers without the formula as a comment
++- [x] Run `pytest` and confirm all tests pass (AC: 6)
++
++## Dev Notes
++
++**Critical conventions — must read before writing code:**
++
++- **`OrderOut` is manually constructed — never auto-mapped from ORM.** `OrderItemOut` has `from_attributes = True`; `OrderOut` does not. Both `create_order` and `get_order` build `OrderOut(id=..., user_id=..., ...)` field-by-field. The two new fields must appear in both call sites.
++- **Money is always integer cents.** `total`, `unit_price` — all `Integer`. The discount computation operates entirely on integer cents: `round(total_cents * (1 - pct/100))`. No floats reach the DB.
++- **`round()` not `int(round(...))`.** The existing `_to_cents` uses `int(round(...))` for dollar→cent conversion. For the discount computation, use bare `round()` — the result is already in cents and Python 3's `round()` returns an `int` when given an `int * float`.
++- **Date format is `%Y-%d-%m` (day/month swapped) — do not fix it.** Both `create_order` and `get_order` use `order.created_at.strftime("%Y-%d-%m")`. Preserve this in both handlers when updating the `OrderOut(...)` constructor.
++- **`autoflush=False`.** The existing pattern is: `Order(total=0)` → `db.add` → `db.flush()` (to get PK) → add items → set final total → `db.commit()` → `db.refresh()`. The discount validation and computation fit in this flow: validate before `Order(...)` insert; compute after item accumulation; assign to `order` before commit.
++- **HTTP 422 for invalid code** — consistent with FastAPI's validation error shape. The detail string must reference the submitted code: `f"invalid discount code: {payload.discount_code!r}"`.
++- **Test emails must be unique per test.** `_make_user` defaults to `u@example.com`; tests that create users must pass explicit emails to avoid 409 conflicts.
++- **`discount_codes` fixture from Story 1.1 seeds SAVE5/SAVE10/SAVE20.** Any test using discount codes declares `discount_codes` as a parameter — pytest injects it automatically.
++- **Do not touch `adjust_total`, `add_item_inline`, or `_format_created_at`** — dead code at bottom of `orders.py`; ignore completely.
++
++### Prerequisite
++
++Story 1.1 must be complete. This story assumes `DiscountCode` model exists in `src/api/models.py`, the `Order` model already has `discount_code` and `discount_pct` columns, and `tests/conftest.py` already has `db` and `discount_codes` fixtures.
++
++### Project Structure Notes
++
++- `src/api/routes/orders.py` — extend in-place; no new route files
++- `tests/test_orders.py` — append 7 new test functions at the bottom
++
++### References
++
++- Architecture §3 API Changes [Source: `_bmad-output/planning-artifacts/architecture.md#3-api-changes`]
++- Architecture §5 Test Coverage Plan [Source: `_bmad-output/planning-artifacts/architecture.md#5-test-coverage-plan`]
++- Architecture §1 Guiding Decisions [Source: `_bmad-output/planning-artifacts/architecture.md#1-guiding-decisions`]
++- PRD FR-2 through FR-5 [Source: `_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/prd.md`]
++- Convention sweep findings: `OrderOut` manual construction, cents-only arithmetic, date format lock
++
++## Dev Agent Record
++
++### Agent Model Used
++
++claude-sonnet-4-6
++
++### Debug Log References
++
++### Completion Notes List
++
++- Added `DiscountCode` to import in `src/api/routes/orders.py`
++- `OrderCreate`: added `discount_code: str | None = None`
++- `OrderOut`: added `discount_code: str | None = None` and `discount_pct: int | None = None`
++- `create_order`: validates code before order insert (normalise → query → 422 on miss); applies `round(total * (1 - pct/100))` after item accumulation; sets both fields on order; threads through `OrderOut` constructor
++- `get_order`: threads `discount_code` and `discount_pct` through `OrderOut` constructor
++- 7 new tests appended to `tests/test_orders.py`; shared item fixture `_ITEMS_2x999` avoids magic numbers inline
++- 18/18 tests pass; 0 regressions
++
++### File List
++
++- `src/api/routes/orders.py`
++- `tests/test_orders.py`
+diff --git a/target/_bmad-output/planning-artifacts/architecture.md b/target/_bmad-output/planning-artifacts/architecture.md
+new file mode 100644
+index 0000000..0f9d620
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/architecture.md
+@@ -0,0 +1,212 @@
++---
++stepsCompleted: [1, 2, 3, 4, 5]
++inputDocuments:
++  - _bmad-output/planning-artifacts/prds/prd-target-2026-05-18/prd.md
++workflowType: architecture
++project_name: target
++user_name: Luisticas
++date: 2026-05-18
++status: final
++---
++
++# Architecture: Percentage Discount Codes at Checkout
++
++**Feature:** FR-1 through FR-5 from PRD `prd-target-2026-05-18/prd.md`  
++**Stack:** Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative), Pydantic v2, SQLite, pytest
++
++---
++
++## 1. Guiding Decisions
++
++| Decision | Choice | Rationale |
++|----------|--------|-----------|
++| Case sensitivity | Normalise to `UPPER()` on insert and lookup | Simplest correctness; no SQLite collation magic needed |
++| Rounding | `round(total_cents * (1 - pct/100))` | Matches Python's banker's rounding; consistent with `_to_cents` pattern |
++| Invalid-code HTTP status | `422` | Consistent with FastAPI's own validation error envelope |
++| Seed mechanism | `lifespan` startup + test fixture | Production seeds on boot; tests seed via `db` session fixture (no admin API) |
++| Percentage enforcement | Application-layer validation only | No `CheckConstraint` — keeps schema simple; only three known codes are seeded |
++| Discount stored on Order | `discount_code: str | None`, `discount_pct: int | None` | Audit trail without joins; mirrors existing `total` design |
++
++---
++
++## 2. Data Model Changes
++
++### 2.1 New model: `DiscountCode` — `src/api/models.py`
++
++```python
++class DiscountCode(Base):
++    __tablename__ = "discount_codes"
++
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
++    percentage: Mapped[int] = mapped_column(Integer, nullable=False)
++```
++
++`code` is stored and compared in **UPPER CASE**. Uniqueness is enforced at the DB level.
++
++### 2.2 Extend `Order` — `src/api/models.py`
++
++Add two nullable columns to the existing `Order` class:
++
++```python
++discount_code: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
++discount_pct:  Mapped[int | None] = mapped_column(Integer,     nullable=True, default=None)
++```
++
++Both default to `None`; existing rows are unaffected (SQLite schema is rebuilt from `Base.metadata` at startup with no migrations).
++
++---
++
++## 3. API Changes
++
++### 3.1 `OrderCreate` — `src/api/routes/orders.py`
++
++Add one optional field:
++
++```python
++class OrderCreate(BaseModel):
++    items: list[OrderItemIn]
++    discount_code: str | None = None   # new
++```
++
++### 3.2 `OrderOut` — `src/api/routes/orders.py`
++
++Add two optional fields (additive; no existing consumer breaks):
++
++```python
++class OrderOut(BaseModel):
++    id: int
++    user_id: int
++    total: int
++    created_at: str
++    items: list[OrderItemOut]
++    discount_code: str | None = None   # new
++    discount_pct:  int | None = None   # new
++```
++
++### 3.3 `create_order` handler — `src/api/routes/orders.py`
++
++Insertion point is **before** the item loop. No changes to item-accumulation logic.
++
++```
++1. Receive payload (discount_code optional)
++2. If discount_code is not None:
++     a. Normalise: code_key = payload.discount_code.strip().upper()
++     b. db.query(DiscountCode).filter(DiscountCode.code == code_key).one_or_none()
++     c. If None → raise HTTPException(422, detail=f"invalid discount code: {payload.discount_code!r}")
++     d. Record discount_pct = dc.percentage, applied_code = dc.code
++3. Build Order(user_id, total=0), flush
++4. Accumulate item total_cents (unchanged)
++5. If discount applied: total_cents = round(total_cents * (1 - discount_pct / 100))
++6. order.total = total_cents
++   order.discount_code = applied_code   (None if no code)
++   order.discount_pct  = discount_pct   (None if no code)
++7. commit / refresh / return OrderOut (include new fields)
++```
++
++`get_order` also returns `OrderOut`; the two new nullable fields are already on the `Order` ORM object so they fall through automatically — no logic change needed in `get_order`.
++
++**New import required:**
++
++```python
++from api.models import DiscountCode, Order, OrderItem, User
++```
++
++---
++
++## 4. Seeding
++
++### 4.1 Production seed — `src/api/main.py`
++
++After `Base.metadata.create_all`, insert canonical codes if absent:
++
++```python
++from api.models import Base, DiscountCode
++from api.deps import engine, SessionLocal
++
++@asynccontextmanager
++async def lifespan(_: FastAPI):
++    Base.metadata.create_all(bind=engine)
++    _seed_discount_codes()
++    yield
++
++def _seed_discount_codes() -> None:
++    canonical = [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]
++    with SessionLocal() as db:
++        for code, pct in canonical:
++            exists = db.query(DiscountCode).filter(DiscountCode.code == code).one_or_none()
++            if exists is None:
++                db.add(DiscountCode(code=code, percentage=pct))
++        db.commit()
++```
++
++Idempotent: safe to call on every restart.
++
++### 4.2 Test seed — `tests/conftest.py`
++
++Add a `db` session fixture and a `discount_codes` fixture. Tests that need codes request `discount_codes`:
++
++```python
++from sqlalchemy.orm import Session
++from api.models import DiscountCode
++
++@pytest.fixture
++def db(db_engine):
++    session = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)()
++    try:
++        yield session
++    finally:
++        session.close()
++
++@pytest.fixture
++def discount_codes(db):
++    for code, pct in [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]:
++        db.add(DiscountCode(code=code, percentage=pct))
++    db.commit()
++```
++
++Tests declare the dependency as: `def test_...(client, discount_codes):`.
++
++---
++
++## 5. Test Coverage Plan
++
++File: `tests/test_orders.py` — append to existing module.
++
++| Test name | Scenario | Key assertion |
++|-----------|----------|---------------|
++| `test_discount_no_code_regression` | POST /orders without discount_code | `total` unchanged, `discount_code` null, `discount_pct` null |
++| `test_discount_5pct` | SAVE5 applied to a 2×$9.99 order | `total == round(1998 * 0.95)` == 1898 |
++| `test_discount_10pct` | SAVE10 applied | `total == round(1998 * 0.90)` == 1798 |
++| `test_discount_20pct` | SAVE20 applied | `total == round(1998 * 0.80)` == 1598 |
++| `test_discount_unknown_code` | Unknown code "BOGUS" | HTTP 422, zero orders created |
++| `test_discount_case_insensitive` | "save10" (lowercase) | HTTP 201, discount applied |
++| `test_discount_fields_on_get_order` | GET /orders/{id} after discounted POST | response includes `discount_code` and `discount_pct` |
++
++All tests request both `client` and `discount_codes` fixtures (except regression test which only needs `client`).
++
++---
++
++## 6. File Change Summary
++
++| File | Change type | What changes |
++|------|-------------|--------------|
++| `src/api/models.py` | Extend + Add | New `DiscountCode` class; two nullable columns on `Order` |
++| `src/api/routes/orders.py` | Extend | `OrderCreate`, `OrderOut` schemas; `create_order` validation + discount logic; import `DiscountCode` |
++| `src/api/main.py` | Extend | `_seed_discount_codes()` helper; call in `lifespan` |
++| `tests/conftest.py` | Extend | `db` session fixture; `discount_codes` seed fixture |
++| `tests/test_orders.py` | Extend | 7 new test functions |
++
++**No files deleted. No new files. No new dependencies.**
++
++---
++
++## 7. Open Questions Resolved
++
++| PRD OQ | Resolution |
++|--------|-----------|
++| OQ-1: Case sensitivity | Normalise both sides to UPPER — store seeded codes uppercase, `.strip().upper()` on input |
++| OQ-2: Seed mechanism | Startup `lifespan` for production; `discount_codes` fixture for tests |
++| OQ-3: Rounding | `round()` (Python 3 banker's rounding) |
++| OQ-4: HTTP 422 vs 400 | 422 chosen — consistent with FastAPI validation envelope |
++| OQ-5: Schema backward compat | Fields are additive with `None` defaults — safe |
+diff --git a/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/.decision-log.md b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/.decision-log.md
+new file mode 100644
+index 0000000..4606185
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/.decision-log.md
+@@ -0,0 +1,11 @@
++# Decision Log — Percentage Discount Codes at Checkout
++
++| # | Date | Decision | Rationale | Status |
++|---|------|----------|-----------|--------|
++| 1 | 2026-05-18 | Discount percentages fixed to {5, 10, 20} | Matches explicit requirement; no need for open-ended values in v1 | Captured in PRD §4.1 FR-1 |
++| 2 | 2026-05-18 | No admin API for code management | Out of scope per user request; operator seeds DB directly | Captured in PRD §5 Non-Goals |
++| 3 | 2026-05-18 | Discount stored on Order (discount_code + discount_pct columns) | Provides audit trail without joins; consistent with existing SQLite schema style | Captured in PRD §4.2 FR-4 |
++| 4 | 2026-05-18 | discount_code field is optional on POST /orders | Preserves backward compatibility; no breaking change for existing callers | Captured in PRD §4.2 FR-2 |
++| 5 | 2026-05-18 | Case-insensitive lookup assumed | Reduces user error; flagged as open question OQ-1 for confirmation | Captured in PRD §8 OQ-1 |
++| 6 | 2026-05-18 | Invalid code → HTTP 422 | Consistent with FastAPI's default validation error pattern | Captured in PRD §8 OQ-4 |
++| 7 | 2026-05-18 | No single-use / per-user limits | Simplest v1; deferred complexity; flagged as non-goal | Captured in PRD §5 |
+diff --git a/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/prd.md b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/prd.md
+new file mode 100644
+index 0000000..05c5ba1
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-18/prd.md
+@@ -0,0 +1,167 @@
++---
++title: Percentage Discount Codes at Checkout
++status: draft
++created: 2026-05-18
++updated: 2026-05-18
++---
++
++# PRD: Percentage Discount Codes at Checkout
++
++## 0. Document Purpose
++
++This PRD is for the engineering team implementing the discount-code feature on the `target` FastAPI service. It defines functional requirements, explicit non-goals, acceptance criteria, and open questions. Downstream: architecture and story breakdown.
++
++---
++
++## 1. Vision
++
++Users placing orders can supply a short alphanumeric discount code that reduces their order total by a fixed percentage (5 %, 10 %, or 20 %). The feature adds a `DiscountCode` table to the existing SQLite schema, extends the `POST /orders` endpoint to accept and validate the code, and adjusts the computed total before persisting the order. Tests ship alongside the implementation.
++
++---
++
++## 2. Target User
++
++**Primary persona:** Any authenticated API consumer (identified via `X-User-Id` header) who holds a valid discount code.
++
++**Jobs to be done:**
++- Apply a code I received and see a lower total on my order confirmation.
++- Trust that an invalid or non-existent code is rejected clearly, not silently ignored.
++
++**UJ-1. User applies a valid discount at order creation.**
++> Authenticated user POSTs to `/orders` with `items` and `discount_code: "SAVE10"`. The service looks up the code, finds it maps to 10 %, recomputes `total = sum(items) × 0.90`, stores the order with `discount_code` and `discount_pct` recorded, and returns the discounted total in the response.
++
++**UJ-2. User submits an unknown or invalid code.**
++> User POSTs with `discount_code: "BOGUS"`. Service returns HTTP 422 with a clear error message. No order is created.
++
++---
++
++## 3. Glossary
++
++- **Discount Code** — A short string (e.g. `"SAVE10"`) stored in the `discount_codes` table that maps to one of the allowed percentages (5, 10, 20).
++- **Discount Percentage** — The integer percentage off the order total: one of `{5, 10, 20}`.
++- **Order Total** — The sum of `unit_price × quantity` for all items in the order, expressed in cents, **after** any discount is applied.
++- **Original Total** — The pre-discount sum of line items, also in cents.
++- **Checkout** — The act of calling `POST /orders`; there is no separate checkout step.
++
++---
++
++## 4. Features
++
++### 4.1 Discount Code Catalogue
++
++**Description:** A new `discount_codes` table holds all valid codes and their associated percentage. Codes are pre-seeded by the operator; there is no admin API to create them in v1. [ASSUMPTION: codes are case-insensitive on lookup.]
++
++**Functional Requirements:**
++
++#### FR-1: Discount code storage
++
++The system stores discount codes in a `discount_codes` table with at minimum: `code` (unique string), `percentage` (integer, one of 5 / 10 / 20).
++
++**Consequences (testable):**
++- A code inserted into `discount_codes` can be retrieved by exact string match (case-insensitive).
++- `percentage` values outside `{5, 10, 20}` are rejected at the DB or model layer.
++
++---
++
++### 4.2 Apply Discount at Checkout
++
++**Description:** `POST /orders` gains an optional `discount_code` field. When provided, the service validates the code against `discount_codes`, computes the discounted total, and records both the code string and percentage on the order. Realizes UJ-1 and UJ-2.
++
++**Functional Requirements:**
++
++#### FR-2: Optional discount_code field on order creation
++
++A caller may include `discount_code: str` (optional, nullable) in the `POST /orders` request body.
++
++**Consequences (testable):**
++- Omitting `discount_code` (or passing `null`) creates the order at full price — existing behaviour is unchanged.
++- Including a valid code creates the order with `total = round(original_total × (1 − pct/100))`.
++
++#### FR-3: Discount code validation
++
++When `discount_code` is supplied, the service looks it up in `discount_codes` (case-insensitive). If not found, the request is rejected before any order is persisted.
++
++**Consequences (testable):**
++- Unknown code → HTTP 422 with a human-readable error body referencing the invalid code.
++- Valid code → order created; HTTP 201 with discounted `total` in response.
++
++#### FR-4: Discount metadata on order
++
++The persisted `Order` record stores the applied `discount_code` (string) and `discount_pct` (integer). Both are `null` when no code was used.
++
++**Consequences (testable):**
++- Fetching the order after creation returns `discount_code` and `discount_pct` in the response body.
++- Orders created without a code return `discount_code: null` and `discount_pct: null`.
++
++#### FR-5: Discounted total in response
++
++The `OrderOut` response schema includes the discounted `total`, and — when a discount was applied — `discount_code` and `discount_pct`.
++
++**Consequences (testable):**
++- `total` in the response equals `round(sum(unit_price × qty) × (1 − pct/100))`.
++- Response includes `discount_code` and `discount_pct` fields (null-able).
++
++---
++
++## 5. Non-Goals (Explicit)
++
++- **No admin API for code management.** Codes are seeded directly; CRUD endpoints are out of scope.
++- **No single-use or per-user-use limits.** The same code may be applied to any number of orders.
++- **No stacking.** Only one discount code per order.
++- **No expiry or date-range logic.** Codes are active until manually removed from the DB.
++- **No dollar-amount or free-shipping discounts.** Percentages only, fixed set `{5, 10, 20}`.
++- **No discount on individual line items.** Discount applies to the order total only.
++- **No UI.** This is an API-only service.
++
++---
++
++## 6. MVP Scope
++
++### 6.1 In Scope
++
++- `discount_codes` table (SQLAlchemy model, auto-created from `Base.metadata`).
++- `DiscountCode` seed data for at least the three canonical percentages.
++- `Order.discount_code` and `Order.discount_pct` nullable columns.
++- `POST /orders` accepting optional `discount_code`, validating, computing discounted total.
++- Updated `OrderCreate` (request) and `OrderOut` (response) Pydantic schemas.
++- pytest coverage: valid code, unknown code, no code (regression), each discount tier.
++
++### 6.2 Out of Scope for MVP
++
++- Admin endpoints to create/update/delete codes.
++- Per-user or per-order usage tracking.
++- Code expiry.
++- Async DB driver (not used today).
++
++---
++
++## 7. Success Metrics
++
++**Primary**
++- **SM-1:** `POST /orders` with a valid discount code returns HTTP 201 with a correctly discounted total in 100 % of test cases. Validates FR-2, FR-3, FR-5.
++
++**Secondary**
++- **SM-2:** `POST /orders` with an invalid code returns HTTP 422 and creates zero order records. Validates FR-3.
++- **SM-3:** `POST /orders` without a code behaves identically to today (no regression). Validates FR-2.
++
++**Counter-metrics (do not optimise)**
++- **SM-C1:** Discount percentage must not be inferred from the code string; it must always be looked up from `discount_codes`. Prevents logic drift if code-naming conventions change.
++
++---
++
++## 8. Open Questions
++
++1. **Case sensitivity.** Should `"save10"` match `"SAVE10"`? [ASSUMPTION: yes, case-insensitive] — confirm before implementation.
++2. **Seed mechanism.** Should the app seed canonical codes on startup (e.g. `SAVE5`, `SAVE10`, `SAVE20`), or does the operator insert them manually? Affects conftest setup and production runbook.
++3. **Rounding rule.** When `total × (1 − pct/100)` is not a whole number of cents, should we floor, ceil, or round-half-up? [ASSUMPTION: standard `round()`] — confirm to avoid test flakiness.
++4. **Error code.** Should an invalid discount code return HTTP 422 (validation) or HTTP 400 (bad request)? 422 is consistent with FastAPI's default validation errors.
++5. **Response schema backward compatibility.** Adding `discount_code` and `discount_pct` to `OrderOut` is additive; existing consumers should be unaffected. Confirm no consumer treats the response as a closed schema.
++
++---
++
++## 9. Assumptions Index
++
++- **§3 / FR-3:** Discount code lookup is case-insensitive.
++- **§8 / OQ-3:** Discounted total is computed with standard `round()` (half-up in Python 3).
++- **§5:** A code may be reused across multiple orders without restriction.
++- **§4.1:** Codes are pre-seeded; no runtime creation API is needed for v1.
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..1ca12c6 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -2,14 +2,26 @@ from contextlib import asynccontextmanager
+ 
+ from fastapi import FastAPI
+ 
+-from api.deps import engine
+-from api.models import Base
++from api.deps import SessionLocal, engine
++from api.models import Base, DiscountCode
+ from api.routes import orders, users
+ 
+ 
++def _seed_discount_codes() -> None:
++    db = SessionLocal()
++    try:
++        for code, pct in [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]:
++            if db.query(DiscountCode).filter(DiscountCode.code == code).one_or_none() is None:
++                db.add(DiscountCode(code=code, percentage=pct))
++        db.commit()
++    finally:
++        db.close()
++
++
+ @asynccontextmanager
+ async def lifespan(_: FastAPI):
+     Base.metadata.create_all(bind=engine)
++    _seed_discount_codes()
+     yield
+ 
+ 
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..6b2b442 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -32,6 +32,9 @@ class Order(Base):
+         DateTime, default=datetime.utcnow, nullable=False
+     )
+ 
++    discount_code: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
++    discount_pct: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
++
+     user: Mapped[User] = relationship(back_populates="orders")
+     items: Mapped[list["OrderItem"]] = relationship(
+         back_populates="order", cascade="all, delete-orphan"
+@@ -48,3 +51,11 @@ class OrderItem(Base):
+     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
+ 
+     order: Mapped[Order] = relationship(back_populates="items")
++
++
++class DiscountCode(Base):
++    __tablename__ = "discount_codes"
++
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
++    percentage: Mapped[int] = mapped_column(Integer, nullable=False)
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..434869f 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -5,7 +5,7 @@ from pydantic import BaseModel
+ from sqlalchemy.orm import Session
+ 
+ from api.deps import get_current_user, get_db
+-from api.models import Order, OrderItem, User
++from api.models import DiscountCode, Order, OrderItem, User
+ 
+ router = APIRouter(prefix="/orders", tags=["orders"])
+ 
+@@ -22,6 +22,7 @@ class OrderItemIn(BaseModel):
+ 
+ class OrderCreate(BaseModel):
+     items: list[OrderItemIn]
++    discount_code: str | None = None
+ 
+ 
+ class OrderItemOut(BaseModel):
+@@ -39,6 +40,8 @@ class OrderOut(BaseModel):
+     total: int
+     created_at: str
+     items: list[OrderItemOut]
++    discount_code: str | None = None
++    discount_pct: int | None = None
+ 
+ 
+ @router.post("", response_model=OrderOut, status_code=201)
+@@ -50,6 +53,16 @@ def create_order(
+     if not payload.items:
+         raise HTTPException(status_code=400, detail="order must have at least one item")
+ 
++    discount_pct = None
++    applied_code = None
++    if payload.discount_code is not None:
++        code_key = payload.discount_code.strip().upper()
++        dc = db.query(DiscountCode).filter(DiscountCode.code == code_key).one_or_none()
++        if dc is None:
++            raise HTTPException(status_code=422, detail=f"invalid discount code: {payload.discount_code!r}")
++        discount_pct = dc.percentage
++        applied_code = dc.code
++
+     order = Order(user_id=user.id, total=0)
+     db.add(order)
+     db.flush()
+@@ -66,7 +79,12 @@ def create_order(
+         db.add(line)
+         total += unit_price_cents * item.quantity
+ 
++    if discount_pct is not None:
++        total = round(total * (1 - discount_pct / 100))
++
+     order.total = total
++    order.discount_code = applied_code
++    order.discount_pct = discount_pct
+     db.commit()
+     db.refresh(order)
+ 
+@@ -79,6 +97,8 @@ def create_order(
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+         ],
++        discount_code=order.discount_code,
++        discount_pct=order.discount_pct,
+     )
+ 
+ 
+@@ -103,6 +123,8 @@ def get_order(
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+         ],
++        discount_code=order.discount_code,
++        discount_pct=order.discount_pct,
+     )
+ 
+ 
+diff --git a/target/tests/conftest.py b/target/tests/conftest.py
+index 38a57fe..73ed0cb 100644
+--- a/target/tests/conftest.py
++++ b/target/tests/conftest.py
+@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
+ 
+ from api import deps
+ from api.main import app
+-from api.models import Base
++from api.models import Base, DiscountCode
+ 
+ 
+ @pytest.fixture
+@@ -40,3 +40,19 @@ def client(db_engine):
+     with TestClient(app) as c:
+         yield c
+     app.dependency_overrides.clear()
++
++
++@pytest.fixture
++def db(db_engine):
++    session = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)()
++    try:
++        yield session
++    finally:
++        session.close()
++
++
++@pytest.fixture
++def discount_codes(db):
++    for code, pct in [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]:
++        db.add(DiscountCode(code=code, percentage=pct))
++    db.commit()
+diff --git a/target/tests/test_orders.py b/target/tests/test_orders.py
+index afc76b3..b42d5c4 100644
+--- a/target/tests/test_orders.py
++++ b/target/tests/test_orders.py
+@@ -62,3 +62,104 @@ def test_get_order_returns_owner(client):
+     )
+     assert resp.status_code == 200
+     assert resp.json()["id"] == created["id"]
++
++
++_ITEMS_2x999 = [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}]  # 2×999¢ = 1998¢
++
++
++def test_discount_no_code_regression(client):
++    user = _make_user(client, email="nocode@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 1998
++    assert body["discount_code"] is None
++    assert body["discount_pct"] is None
++
++
++def test_discount_5pct(client, discount_codes):
++    user = _make_user(client, email="save5@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999, "discount_code": "SAVE5"},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == round(1998 * 0.95)  # 1898
++    assert body["discount_pct"] == 5
++    assert body["discount_code"] == "SAVE5"
++
++
++def test_discount_10pct(client, discount_codes):
++    user = _make_user(client, email="save10@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999, "discount_code": "SAVE10"},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == round(1998 * 0.90)  # 1798
++    assert body["discount_pct"] == 10
++    assert body["discount_code"] == "SAVE10"
++
++
++def test_discount_20pct(client, discount_codes):
++    user = _make_user(client, email="save20@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999, "discount_code": "SAVE20"},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == round(1998 * 0.80)  # 1598
++    assert body["discount_pct"] == 20
++    assert body["discount_code"] == "SAVE20"
++
++
++def test_discount_unknown_code(client, discount_codes, db):
++    from api.models import Order
++    user = _make_user(client, email="bogus@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999, "discount_code": "BOGUS"},
++    )
++    assert resp.status_code == 422
++    assert "BOGUS" in resp.json()["detail"]
++    assert db.query(Order).count() == 0
++
++
++def test_discount_case_insensitive(client, discount_codes):
++    user = _make_user(client, email="lower@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999, "discount_code": "save10"},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["discount_pct"] == 10
++    assert body["discount_code"] == "SAVE10"
++
++
++def test_discount_fields_on_get_order(client, discount_codes):
++    user = _make_user(client, email="getorder@example.com")
++    created = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": _ITEMS_2x999, "discount_code": "SAVE10"},
++    ).json()
++    resp = client.get(
++        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["discount_code"] == "SAVE10"
++    assert body["discount_pct"] == 10
