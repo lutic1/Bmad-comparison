@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -39,6 +39,8 @@ class OrderOut(BaseModel):
     total: int
     created_at: str
     items: list[OrderItemOut]
+    refunded: bool
+    refunded_at: str | None
 
 
 @router.post("", response_model=OrderOut, status_code=201)
@@ -79,6 +81,8 @@ def create_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+        refunded=order.refunded,
+        refunded_at=order.refunded_at.isoformat() if order.refunded_at else None,
     )
 
 
@@ -103,6 +107,45 @@ def get_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+        refunded=order.refunded,
+        refunded_at=order.refunded_at.isoformat() if order.refunded_at else None,
+    )
+
+
+class RefundOut(BaseModel):
+    order_id: int
+    refunded: bool
+    refunded_at: str
+    total: int
+
+
+@router.post("/{order_id}/refund", response_model=RefundOut)
+def refund_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> RefundOut:
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.user_id != user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    if order.refunded:
+        raise HTTPException(status_code=409, detail="order has already been refunded")
+    if datetime.utcnow() - order.created_at > timedelta(days=30):
+        raise HTTPException(status_code=422, detail="refund window of 30 days has expired")
+
+    now = datetime.utcnow()
+    order.refunded = True
+    order.refunded_at = now
+    db.commit()
+    db.refresh(order)
+
+    return RefundOut(
+        order_id=order.id,
+        refunded=True,
+        refunded_at=now.isoformat(),
+        total=order.total,
     )
 
 

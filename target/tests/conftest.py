@@ -40,3 +40,15 @@ def client(db_engine):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def db_session(db_engine):
+    TestingSessionLocal = sessionmaker(
+        bind=db_engine, autoflush=False, autocommit=False
+    )
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
