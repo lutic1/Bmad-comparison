@@ -1,0 +1,48 @@
+{
+  "workflow": "c",
+  "task": 3,
+  "run": 1,
+  "label": "Scripted BMAD persona-chain replication",
+  "branch": "workflow-c/task-3/run-1",
+  "base_branch": "bmad-base",
+  "prompt_hash": "sha256:2d999a45192ecac8159a6019fbdc8658cd3b4436d603a752414271532d6a7c02",
+  "session_id": "434eecb1-b981-49a8-900c-512e21022bcc",
+  "model": "sonnet",
+  "hermetic_mode": true,
+  "context_source": "target_only",
+  "duration_seconds": 1174,
+  "persona_chain": ["analyst","pm","architect","check-readiness","create-story","dev","code-review"],
+  "phase_costs_usd": [
+  {
+    "persona": "analyst",
+    "cost_usd": 0.1408862
+  },
+  {
+    "persona": "pm",
+    "cost_usd": 0.2372889
+  },
+  {
+    "persona": "architect",
+    "cost_usd": 0.44912175
+  },
+  {
+    "persona": "check-readiness",
+    "cost_usd": 0.536034
+  },
+  {
+    "persona": "create-story",
+    "cost_usd": 1.5421575
+  },
+  {
+    "persona": "dev",
+    "cost_usd": 0.53615175
+  },
+  {
+    "persona": "code-review",
+    "cost_usd": 1.1365771499999997
+  }
+],
+  "total_cost_usd": 4.57821725,
+  "total_tokens_input": 1008,
+  "total_tokens_output": 56114
+}

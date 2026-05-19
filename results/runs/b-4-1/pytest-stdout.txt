@@ -1,0 +1,13 @@
+....................                                                     [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:291
+.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:291
+  /Users/luisticas/bmad-demo/target/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:291: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.9/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+tests/test_orders.py: 27 warnings
+tests/test_users.py: 3 warnings
+  /Users/luisticas/bmad-demo/target/.venv/lib/python3.13/site-packages/sqlalchemy/sql/schema.py:3596: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

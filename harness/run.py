@@ -187,24 +187,37 @@ def _is_workflow_path(path: str) -> bool:
 
 
 def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
+    # Three-dot diff between base and the workflow branch's tip — works
+    # whether HEAD is on the workflow branch or any other branch (e.g.
+    # the operator has returned to base for inspection).
     output = subprocess.run(
-        ["git", "diff", f"{base}...HEAD", "--numstat"],
+        ["git", "diff", f"{base}...{branch}", "--numstat"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     ).stdout
-    working = subprocess.run(
-        ["git", "diff", "HEAD", "--numstat"],
+    # Working-tree diff only matters if HEAD == branch.
+    head = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-    ).stdout
-    untracked = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    ).stdout
+    ).stdout.strip()
+    working = ""
+    untracked = ""
+    if head == branch:
+        working = subprocess.run(
+            ["git", "diff", "HEAD", "--numstat"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        ).stdout
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        ).stdout
 
     files: set[str] = set()
     added = 0
@@ -235,17 +248,25 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
     }
 
 
-def save_diff_artifact(artifact_dir: Path, base: str) -> None:
+def save_diff_artifact(artifact_dir: Path, base: str, branch: str) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     committed = subprocess.run(
-        ["git", "diff", f"{base}...HEAD"],
+        ["git", "diff", f"{base}...{branch}"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     ).stdout
-    working = subprocess.run(
-        ["git", "diff", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True
-    ).stdout
+    head = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    working = ""
+    if head == branch:
+        working = subprocess.run(
+            ["git", "diff", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True
+        ).stdout
     (artifact_dir / "committed.diff").write_text(committed)
     (artifact_dir / "working.diff").write_text(working)
 
@@ -357,6 +378,19 @@ def main() -> int:
             "(e.g. run_a_scripted.sh) already created the branch."
         ),
     )
+    parser.add_argument(
+        "--branch-name",
+        type=str,
+        default="",
+        help=(
+            "Override the branch-name HEAD check. When set with "
+            "--skip-branch, the harness records the supplied name as "
+            "branch_name without requiring HEAD to match — and computes "
+            "diff stats against the supplied branch instead of HEAD. "
+            "Use when the operator has already returned to the base "
+            "branch for inspection."
+        ),
+    )
     # Non-interactive value flags.
     parser.add_argument("--duration-seconds", type=int)
     parser.add_argument("--prompt-hash", type=str, default="")
@@ -391,14 +425,31 @@ def main() -> int:
 
     base = WORKFLOW_BASE_BRANCHES[args.workflow]
     if args.skip_branch:
-        branch = run_git("rev-parse", "--abbrev-ref", "HEAD")
+        head = run_git("rev-parse", "--abbrev-ref", "HEAD")
         expected = f"workflow-{args.workflow}/task-{args.task}/run-{args.run}"
-        if branch != expected:
+        if args.branch_name:
+            branch = args.branch_name
+            # Verify the branch exists so diff stats can be computed.
+            rev = subprocess.run(
+                ["git", "rev-parse", "--verify", branch],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+            )
+            if rev.returncode != 0:
+                sys.stderr.write(
+                    f"--branch-name {branch} does not exist as a git ref.\n"
+                )
+                return 2
+        elif head != expected:
             sys.stderr.write(
-                f"--skip-branch set but HEAD is {branch}, expected "
-                f"{expected}. Refusing to record under wrong branch.\n"
+                f"--skip-branch set but HEAD is {head}, expected "
+                f"{expected}. Pass --branch-name {expected} to record "
+                f"from a different HEAD.\n"
             )
             return 2
+        else:
+            branch = head
     else:
         branch = checkout_run_branch(args.workflow, args.task, args.run)
         print(f"Checked out {branch}")
@@ -429,8 +480,8 @@ def main() -> int:
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     print()
-    print(f"Capturing diff (vs {base})…")
-    save_diff_artifact(artifact_dir, base)
+    print(f"Capturing diff ({base}...{branch})…")
+    save_diff_artifact(artifact_dir, base, branch)
     diff_stats = collect_diff_stats(branch, base)
     print(
         f"  files changed: {diff_stats['files_changed']}"
