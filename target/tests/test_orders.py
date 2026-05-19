@@ -1,3 +1,7 @@
+import datetime
+import re
+
+
 def _make_user(client, email="u@example.com", name="U"):
     resp = client.post("/users", json={"email": email, "name": name})
     assert resp.status_code == 201
@@ -24,6 +28,8 @@ def test_create_order_stores_cents(client):
     body = resp.json()
     assert body["total"] == 1998
     assert body["items"][0]["unit_price"] == 999
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", body["created_at"])
+    assert body["created_at"] == datetime.date.today().isoformat()
 
 
 def test_create_order_empty_items_rejected(client):
@@ -62,3 +68,20 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", resp.json()["created_at"])
+    assert resp.json()["created_at"] == datetime.date.today().isoformat()
+
+
+def test_create_order_date_format_is_year_month_day(client):
+    user = _make_user(client, email="dateformat@example.com")
+    expected = datetime.date.today().isoformat()
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "Z", "quantity": 1, "unit_price": 1.00}]},
+    )
+    assert resp.status_code == 201
+    created_at = resp.json()["created_at"]
+    parsed = datetime.date.fromisoformat(created_at)
+    assert parsed == datetime.date.today()
+    assert created_at == expected
