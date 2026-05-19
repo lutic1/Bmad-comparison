@@ -9,6 +9,8 @@ from api.models import Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
+DISCOUNT_CODES: dict[str, int] = {"SAVE5": 5, "SAVE10": 10, "SAVE20": 20}
+
 
 def _to_cents(dollars: float) -> int:
     return int(round(dollars * 100))
@@ -22,6 +24,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -36,6 +39,9 @@ class OrderItemOut(BaseModel):
 class OrderOut(BaseModel):
     id: int
     user_id: int
+    subtotal: int
+    discount_code: str | None
+    discount_amount: int
     total: int
     created_at: str
     items: list[OrderItemOut]
@@ -54,7 +60,7 @@ def create_order(
     db.add(order)
     db.flush()
 
-    total = 0
+    subtotal = 0
     for item in payload.items:
         unit_price_cents = _to_cents(item.unit_price)
         line = OrderItem(
@@ -64,15 +70,26 @@ def create_order(
             unit_price=unit_price_cents,
         )
         db.add(line)
-        total += unit_price_cents * item.quantity
+        subtotal += unit_price_cents * item.quantity
 
-    order.total = total
+    discount_amount = 0
+    if payload.discount_code is not None:
+        if payload.discount_code not in DISCOUNT_CODES:
+            raise HTTPException(status_code=400, detail="invalid discount code")
+        discount_amount = subtotal * DISCOUNT_CODES[payload.discount_code] // 100
+        order.discount_code = payload.discount_code
+        order.discount_amount = discount_amount
+
+    order.total = subtotal - discount_amount
     db.commit()
     db.refresh(order)
 
     return OrderOut(
         id=order.id,
         user_id=order.user_id,
+        subtotal=order.total + order.discount_amount,
+        discount_code=order.discount_code,
+        discount_amount=order.discount_amount,
         total=order.total,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
@@ -97,6 +114,9 @@ def get_order(
     return OrderOut(
         id=order.id,
         user_id=order.user_id,
+        subtotal=order.total + order.discount_amount,
+        discount_code=order.discount_code,
+        discount_amount=order.discount_amount,
         total=order.total,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[

@@ -62,3 +62,106 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_create_order_with_save5_applies_5_percent(client):
+    user = _make_user(client, email="save5@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
+            "discount_code": "SAVE5",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["subtotal"] == 1000
+    assert body["discount_code"] == "SAVE5"
+    assert body["discount_amount"] == 50
+    assert body["total"] == 950
+
+
+def test_create_order_with_save10_applies_10_percent(client):
+    user = _make_user(client, email="save10@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "A", "quantity": 2, "unit_price": 10.00}],
+            "discount_code": "SAVE10",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["subtotal"] == 2000
+    assert body["discount_code"] == "SAVE10"
+    assert body["discount_amount"] == 200
+    assert body["total"] == 1800
+
+
+def test_create_order_with_save20_applies_20_percent(client):
+    user = _make_user(client, email="save20@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
+            "discount_code": "SAVE20",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["subtotal"] == 1000
+    assert body["discount_code"] == "SAVE20"
+    assert body["discount_amount"] == 200
+    assert body["total"] == 800
+
+
+def test_create_order_invalid_discount_code_rejected(client):
+    user = _make_user(client, email="bogus@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
+            "discount_code": "BOGUS",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_create_order_no_discount_code_unchanged(client):
+    user = _make_user(client, email="nocode@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}]},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["discount_code"] is None
+    assert body["discount_amount"] == 0
+    assert body["subtotal"] == 1000
+    assert body["total"] == 1000
+
+
+def test_get_order_returns_discount_fields(client):
+    user = _make_user(client, email="getdiscount@example.com")
+    created = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
+            "discount_code": "SAVE10",
+        },
+    ).json()
+    resp = client.get(
+        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["discount_code"] == "SAVE10"
+    assert body["discount_amount"] == 100
+    assert body["subtotal"] == 1000
+    assert body["total"] == 900
