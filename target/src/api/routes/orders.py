@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -39,6 +39,12 @@ class OrderOut(BaseModel):
     total: int
     created_at: str
     items: list[OrderItemOut]
+
+
+class RefundOut(BaseModel):
+    order_id: int
+    refunded: bool
+    refunded_at: str
 
 
 @router.post("", response_model=OrderOut, status_code=201)
@@ -103,6 +109,29 @@ def get_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+    )
+
+
+@router.post("/{order_id}/refund", response_model=RefundOut)
+def refund_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RefundOut:
+    order = db.get(Order, order_id)
+    if order is None or order.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="order not found")
+    if datetime.utcnow() - order.created_at > timedelta(days=30):
+        raise HTTPException(status_code=422, detail="refund window has expired")
+    if order.refunded:
+        raise HTTPException(status_code=422, detail="order has already been refunded")
+    order.refunded = True
+    order.refunded_at = datetime.utcnow()
+    db.commit()
+    return RefundOut(
+        order_id=order.id,
+        refunded=order.refunded,
+        refunded_at=_format_created_at(order.refunded_at),
     )
 
 

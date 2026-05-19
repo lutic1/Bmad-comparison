@@ -62,3 +62,111 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def _make_order(client, user_id: int) -> dict:
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user_id)},
+        json={"items": [{"sku": "SKU-1", "quantity": 1, "unit_price": 10.00}]},
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_refund_success(client):
+    user = _make_user(client, email="refund_ok@example.com")
+    order = _make_order(client, user["id"])
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(user["id"])},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["order_id"] == order["id"]
+    assert body["refunded"] is True
+    assert body["refunded_at"] != ""
+
+
+def test_refund_boundary_30_days(client, db_engine):
+    from datetime import datetime, timedelta
+    from sqlalchemy.orm import Session
+    from api.models import Order
+
+    user = _make_user(client, email="refund_boundary@example.com")
+    order = _make_order(client, user["id"])
+
+    boundary_dt = datetime.utcnow() - timedelta(days=30) + timedelta(seconds=5)
+    with Session(db_engine) as session:
+        db_order = session.get(Order, order["id"])
+        db_order.created_at = boundary_dt
+        session.commit()
+
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(user["id"])},
+    )
+    assert resp.status_code == 200
+
+
+def test_refund_order_not_found(client):
+    user = _make_user(client, email="refund_404@example.com")
+    resp = client.post(
+        "/orders/99999/refund",
+        headers={"X-User-Id": str(user["id"])},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "order not found"
+
+
+def test_refund_wrong_owner_returns_404(client):
+    owner = _make_user(client, email="refund_owner@example.com")
+    other = _make_user(client, email="refund_other@example.com")
+    order = _make_order(client, owner["id"])
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(other["id"])},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "order not found"
+
+
+def test_refund_window_expired(client, db_engine):
+    from datetime import datetime, timedelta
+    from sqlalchemy.orm import Session
+    from api.models import Order
+
+    user = _make_user(client, email="refund_expired@example.com")
+    order = _make_order(client, user["id"])
+
+    with Session(db_engine) as session:
+        db_order = session.get(Order, order["id"])
+        db_order.created_at = datetime.utcnow() - timedelta(days=31)
+        session.commit()
+
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(user["id"])},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "refund window has expired"
+
+
+def test_refund_already_refunded(client):
+    user = _make_user(client, email="refund_twice@example.com")
+    order = _make_order(client, user["id"])
+    client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(user["id"])},
+    )
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(user["id"])},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "order has already been refunded"
+
+
+def test_refund_no_auth(client):
+    resp = client.post("/orders/1/refund")
+    assert resp.status_code == 401

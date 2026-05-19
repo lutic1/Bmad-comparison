@@ -1,50 +1,42 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+==================
+Version change: [template] → 1.0.0
+Bump rationale: MINOR — initial constitution populated from template placeholders.
 
-## Core Principles
+Modified principles: N/A (first population, no prior principles)
+Added sections: Core Principles (verbatim body), Governance
+Removed sections: SECTION_2, SECTION_3 (merged into flat principle list per user input)
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+Templates checked:
+  ✅ .specify/templates/plan-template.md — Constitution Check gate references constitution generically; no stale content.
+  ✅ .specify/templates/spec-template.md — No direct constitution references; aligned.
+  ⚠  .specify/templates/tasks-template.md — Line 12 states "Tests are OPTIONAL" which conflicts with the constitution
+     principle "Tests are non-optional." Manual update to tasks-template.md recommended to align with this constitution.
+  ✅ .specify/templates/constitution-template.md — Source template; no update needed.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Deferred TODOs: none.
+-->
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+# Project constitution
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
-
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
-
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
-
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
-
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest.
+- Idiomatic FastAPI: small route functions, Pydantic models for
+  request and response shapes, dependency injection via Depends.
+- Tests are non-optional. Minimum 80% line coverage on changed files.
+  Every new route ships with happy-path and at least one error-path
+  test.
+- Conventional commits: feat:, fix:, refactor:, test:, docs:, chore:.
+- No new third-party dependencies without a stated justification.
+- Type hints on every public function and route handler.
+- Don't refactor unrelated code in the same change.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other documented practices. Amendments MUST be
+proposed with a rationale and recorded as a version bump. Semantic versioning
+applies: MAJOR for principle removals or redefinitions, MINOR for additions,
+PATCH for clarifications or wording fixes. All PRs MUST verify compliance with
+the principles above before merging.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-19
