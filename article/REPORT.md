@@ -329,6 +329,102 @@ the cells we tested. The article's most honest framing isn't "BMAD wins
 on quality" — it's "if you want Plan-Mode-level cost, switch to Opus;
 if you want Sonnet-level cost, accept BMAD's ceremony tax for quality."
 
+## What would invalidate this
+
+The cheapest experiments that could break each headline finding,
+ordered by cost. Pre-registering these is the epistemic move I owe
+the reader before they decide whether to act on the report.
+
+### Finding 1 — "Opus catches A2 3/3, Sonnet misses 3/3"
+
+- **Cheapest break:** n=10 on A2-Opus. The current 3/3 is consistent
+  but thin — the underlying rate could be anywhere from ~70% to 100%
+  with three samples. Add seven more Opus runs of A2 (~$15 at current
+  Opus cost) and the confidence interval tightens substantially. If
+  the rate drops below ~80%, the "model swap fixes Plan Mode"
+  framing weakens to "model swap helps Plan Mode probabilistically."
+- **Cheaper still:** n=10 on A2-Sonnet. The current 0/3 might be
+  coincidence even if rare; seven more Sonnet runs (~$5) at a 0/10
+  rate would settle whether the failure is a true Sonnet structural
+  limit or just bad luck.
+- **What would refute it entirely:** any single A2-Sonnet run that
+  ships the `amount` field. Would re-open the "Plan Mode is
+  inconsistent on this task" interpretation instead of "Plan Mode
+  systematically misses on Sonnet."
+
+### Finding 2 — "Spec Kit specify-phase variance is model-independent"
+
+- **Cheapest break:** n=10 on B2-Opus. Current 1/2 is the thinnest
+  sample in the whole benchmark. Eight more Opus B2 runs (~$40) would
+  tell us whether the catch rate on Opus is meaningfully different
+  from Sonnet's 1/3.
+- **Cheap alternative:** add a `/speckit-clarify` invocation between
+  specify and plan on three B2 reruns. Spec Kit ships clarify as an
+  optional skill; if it forces the agent to surface the missing field
+  3/3 times, then "specify-phase variance" becomes "specify-phase
+  needs the optional clarify gate," which is a much more actionable
+  finding.
+- **What would refute it entirely:** B2 catch-rate diverging sharply
+  between models (e.g. Opus 5/5, Sonnet 0/5).
+
+### Finding 3 — "BMAD's quality reliability is the most robust"
+
+- **Cheapest break — and the highest-leverage epistemic move:** a
+  **second rater** scoring from the diffs and pytest output only,
+  blind to the workflow column. The current 4.83 mean is from a
+  single operator who knew which workflow produced each diff. Even
+  with anchor-based scoring, one rater is one rater. Second-rater
+  cost is mostly time, not money.
+- **Statistical break:** n=10 on C2-Sonnet (or any C-cell). All
+  Sonnet+BMAD task-2 runs scored 5/5 across 3 samples — but the
+  ceiling effect (you can't score above 5) hides quality variance.
+  More runs with finer-grained scoring (e.g. 1–10) could expose
+  whether BMAD is genuinely uniform or just clustered near the
+  rubric ceiling.
+- **What would refute the cost framing:** running BMAD with cheaper
+  context (Haiku 4.5 for the planning personas, Sonnet only for Dev
+  and Code Review) and finding that quality drops by less than the
+  cost saving. The current cost numbers assume Sonnet end-to-end —
+  the actual cost-optimal BMAD configuration is unmeasured.
+
+### Cross-cutting — "everyone discovers the cents convention"
+
+- **Cheapest break:** swap `target/` for a real brownfield codebase
+  (5k–20k LOC, multiple conventions, some dead) and rerun task 4 on
+  Plan-Mode-Sonnet. If the convention isn't discovered on a real
+  codebase the way it was on this 500-LOC synthetic, then the
+  "Plan Mode reads the codebase well enough on small projects to
+  catch conventions unprompted" framing only applies in the
+  synthetic regime. This is the single test most likely to limit
+  the article's generalisability claims.
+- **Cheaper proxy:** add 2–3 *additional* implicit conventions to
+  `target/` (a header-name typo, an off-by-one pagination quirk, an
+  inconsistent error-body shape) and run task 4. If Plan Mode still
+  catches cents but misses the others, "convention discovery"
+  becomes specifically "obvious-to-grep convention discovery,"
+  which weakens the finding without killing it.
+- **What would refute it entirely:** a single Plan-Mode-Sonnet task-4
+  run that introduces a `Float` SQLAlchemy column for money. Three
+  runs caught the convention; even one violation in n=10 would
+  reframe "discovered" as "usually discovered."
+
+### What I'd actually do next, ranked
+
+1. Second rater on the 12 C-cells (free-ish, biggest credibility win).
+2. n=10 on A2-Opus to nail down the rebuttal's confidence interval
+   (~$15).
+3. n=10 on B2 split across both models to characterise specify-phase
+   variance properly (~$45).
+4. One real-brownfield codebase swap for task 4 (one-time setup cost,
+   then ~$5 in cell reruns on Plan-Mode-Sonnet).
+
+Total to get to a defensible n: roughly **$65 extra plus one second
+rater's afternoon**, on top of the $92.60 already spent. Each of the
+four would meaningfully change my confidence in the corresponding
+headline; none of them are strictly necessary to publish, but the
+first one is the cheapest credibility-per-dollar item in the whole
+benchmark and the only one that can't be argued away.
+
 ## Files of interest
 
 - `results/results.csv` — every cell, every column
