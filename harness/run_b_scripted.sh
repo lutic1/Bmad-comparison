@@ -270,3 +270,21 @@ fi
     --context-source target_only \
     --score "$SCORE" \
     --notes "$NOTES"
+
+# --- post-harness: park results on the workflow's base branch -----------
+# Without this the operator has to manually stash, switch to main, pop,
+# commit — and forgetting that order is how the C1 capture commit
+# landed on the workflow branch the first time. We do it for them: stash
+# the harness's results.csv update + the new artifact dir, switch back
+# to the base branch, pop, leaving everything staged for one `git add &&
+# git commit -m "..." on main / spec-kit-base / bmad-base`.
+RESULT_STASH_REF=""
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain results/)" ]]; then
+    git -C "$REPO_ROOT" stash push -u -m "scripted-runner: $BRANCH results/" -- results/ >/dev/null
+    RESULT_STASH_REF="$(git -C "$REPO_ROOT" stash list | head -1 | cut -d: -f1)"
+fi
+git -C "$REPO_ROOT" checkout "$BASE" >/dev/null 2>&1
+if [[ -n "$RESULT_STASH_REF" ]]; then
+    git -C "$REPO_ROOT" stash pop "$RESULT_STASH_REF" >/dev/null
+fi
+echo "→ parked results/ changes on $BASE; commit them and you're done."
