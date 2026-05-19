@@ -14,6 +14,9 @@ def _to_cents(dollars: float) -> int:
     return int(round(dollars * 100))
 
 
+DISCOUNT_CODES: dict[str, int] = {"SAVE5": 5, "SAVE10": 10, "SAVE20": 20}
+
+
 class OrderItemIn(BaseModel):
     sku: str
     quantity: int
@@ -22,6 +25,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -37,6 +41,7 @@ class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    discount_code: str | None
     created_at: str
     items: list[OrderItemOut]
 
@@ -49,6 +54,9 @@ def create_order(
 ) -> OrderOut:
     if not payload.items:
         raise HTTPException(status_code=400, detail="order must have at least one item")
+
+    if payload.discount_code is not None and payload.discount_code not in DISCOUNT_CODES:
+        raise HTTPException(status_code=400, detail="invalid discount code")
 
     order = Order(user_id=user.id, total=0)
     db.add(order)
@@ -66,7 +74,13 @@ def create_order(
         db.add(line)
         total += unit_price_cents * item.quantity
 
+    if payload.discount_code is not None:
+        pct = DISCOUNT_CODES[payload.discount_code]
+        discount_amount = int(round(total * pct / 100))
+        total = total - discount_amount
+
     order.total = total
+    order.discount_code = payload.discount_code
     db.commit()
     db.refresh(order)
 
@@ -74,6 +88,7 @@ def create_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        discount_code=order.discount_code,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
@@ -98,6 +113,7 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        discount_code=order.discount_code,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
