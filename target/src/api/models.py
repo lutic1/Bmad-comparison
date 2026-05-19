@@ -31,6 +31,9 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+    refunded_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
 
     user: Mapped[User] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
