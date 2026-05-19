@@ -356,7 +356,7 @@ After commissioning 9 additional A-Opus runs (A1, A3, A4 each ×3) and
 7 extra A2-Opus runs (bringing A2-Opus to n=10), we have **full n=3
 parity** between A-Sonnet and A-Opus across all 4 tasks, plus
 **n=10 on the headline A2 cell**. Grand total across Sonnet + Opus:
-**$148.56 for 69 cells**.
+**$150.99 for 70 cells**.
 
 Per-task A comparison (n=3 each, except A2 which is n=3 vs n=10):
 
@@ -449,9 +449,14 @@ the reader before they decide whether to act on the report.
   the variance disappears (at least on this failure mode)**. Cost:
   $13.92 across 3 cells.
 - **Cheapest remaining break:** n=5 of "B2 Sonnet + clarify" to
-  confirm the gate works on the cheaper model too (~$15).
+  confirm the gate works on the cheaper model too. Currently at
+  **n=1, caught** (b-2-24: $2.43, RefundOut shipped with the amount
+  field — named `total` here). One data point isn't a finding, but
+  it's directionally consistent with the Opus result; four more
+  Sonnet+clarify runs would settle it (~$10).
 - **What would refute it entirely:** any B2-with-clarify run that
-  ships RefundOut without the amount field. We have 0/3 so far.
+  ships RefundOut without the amount field. We have 0/4 so far
+  (3 Opus + 1 Sonnet).
 
 ### Finding 3 — "BMAD's quality reliability is the most robust"
 
@@ -505,7 +510,7 @@ the reader before they decide whether to act on the report.
    then ~$5 in cell reruns on Plan-Mode-Sonnet).
 
 Total to get to a defensible n: roughly **$65 extra plus one second
-rater's afternoon**, on top of the $148.56 already spent. Each of the
+rater's afternoon**, on top of the $150.99 already spent. Each of the
 four would meaningfully change my confidence in the corresponding
 headline; none of them are strictly necessary to publish, but the
 first one is the cheapest credibility-per-dollar item in the whole
