@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
-from api.models import Order, OrderItem, User
+from api.models import Order, OrderItem, Refund, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -39,6 +39,16 @@ class OrderOut(BaseModel):
     total: int
     created_at: str
     items: list[OrderItemOut]
+
+
+class RefundOut(BaseModel):
+    id: int
+    order_id: int
+    amount: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 @router.post("", response_model=OrderOut, status_code=201)
@@ -104,6 +114,29 @@ def get_order(
             for i in order.items
         ],
     )
+
+
+@router.post("/{order_id}/refund", response_model=RefundOut, status_code=201)
+def refund_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Refund:
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="not your order")
+    if order.refunded_at is not None:
+        raise HTTPException(status_code=409, detail="order already refunded")
+    if (datetime.utcnow() - order.created_at).days > 30:
+        raise HTTPException(status_code=400, detail="refund window expired")
+    order.refunded_at = datetime.utcnow()
+    refund = Refund(order_id=order.id, amount=order.total)
+    db.add(refund)
+    db.commit()
+    db.refresh(refund)
+    return refund
 
 
 def adjust_total(order: Order, delta_cents: int) -> None:

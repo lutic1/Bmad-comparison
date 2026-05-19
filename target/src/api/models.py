@@ -31,9 +31,13 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     user: Mapped[User] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
+    refunds: Mapped[list["Refund"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
 
@@ -48,3 +52,16 @@ class OrderItem(Base):
     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="items")
+
+
+class Refund(Base):
+    __tablename__ = "refunds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)  # cents
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+    order: Mapped[Order] = relationship(back_populates="refunds")
