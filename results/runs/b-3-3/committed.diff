@@ -1,0 +1,1269 @@
+diff --git a/target/.gitignore b/target/.gitignore
+new file mode 100644
+index 0000000..6caf1aa
+--- /dev/null
++++ b/target/.gitignore
+@@ -0,0 +1,17 @@
++__pycache__/
++*.pyc
++*.pyo
++.venv/
++venv/
++dist/
++build/
++*.egg-info/
++.pytest_cache/
++.coverage
++htmlcov/
++app.db
++.DS_Store
++*.tmp
++*.swp
++.env
++.env.*
+diff --git a/target/.specify/feature.json b/target/.specify/feature.json
+new file mode 100644
+index 0000000..5c5078c
+--- /dev/null
++++ b/target/.specify/feature.json
+@@ -0,0 +1,3 @@
++{
++  "feature_directory": "specs/001-api-rate-limiting"
++}
+diff --git a/target/.specify/memory/constitution.md b/target/.specify/memory/constitution.md
+index a4670ff..c7fc0fe 100644
+--- a/target/.specify/memory/constitution.md
++++ b/target/.specify/memory/constitution.md
+@@ -1,50 +1,36 @@
+-# [PROJECT_NAME] Constitution
+-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+-
+-## Core Principles
+-
+-### [PRINCIPLE_1_NAME]
+-<!-- Example: I. Library-First -->
+-[PRINCIPLE_1_DESCRIPTION]
+-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+-
+-### [PRINCIPLE_2_NAME]
+-<!-- Example: II. CLI Interface -->
+-[PRINCIPLE_2_DESCRIPTION]
+-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+-
+-### [PRINCIPLE_3_NAME]
+-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+-[PRINCIPLE_3_DESCRIPTION]
+-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+-
+-### [PRINCIPLE_4_NAME]
+-<!-- Example: IV. Integration Testing -->
+-[PRINCIPLE_4_DESCRIPTION]
+-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+-
+-### [PRINCIPLE_5_NAME]
+-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+-[PRINCIPLE_5_DESCRIPTION]
+-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+-
+-## [SECTION_2_NAME]
+-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+-
+-[SECTION_2_CONTENT]
+-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+-
+-## [SECTION_3_NAME]
+-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+-
+-[SECTION_3_CONTENT]
+-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
++<!-- SYNC IMPACT REPORT
++Version: 0.0.0 → 1.0.0
++Type: MINOR (initial ratification — constitution filled from blank template)
++Modified Principles: N/A (fresh constitution, no prior principles)
++Added Sections: Core Principles (7 bullet points), Governance
++Removed Sections: N/A
++Templates requiring updates:
++  - .specify/templates/tasks-template.md ✅ updated — "Tests are OPTIONAL" language
++    replaced to align with "Tests are non-optional" constitution principle
++  - .specify/templates/plan-template.md ✅ no changes required
++  - .specify/templates/spec-template.md ✅ no changes required
++Deferred TODOs: None
++-->
++
++# Project constitution
++
++- Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest.
++- Idiomatic FastAPI: small route functions, Pydantic models for
++  request and response shapes, dependency injection via Depends.
++- Tests are non-optional. Minimum 80% line coverage on changed files.
++  Every new route ships with happy-path and at least one error-path
++  test.
++- Conventional commits: feat:, fix:, refactor:, test:, docs:, chore:.
++- No new third-party dependencies without a stated justification.
++- Type hints on every public function and route handler.
++- Don't refactor unrelated code in the same change.
+ 
+ ## Governance
+-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+ 
+-[GOVERNANCE_RULES]
+-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
++Amendments MUST be documented with a version bump following semantic versioning
++(MAJOR: breaking principle removal or redefinition; MINOR: new principle or
++material expansion; PATCH: clarification or wording fix). All PRs MUST pass a
++Constitution Check gate as defined in the plan template before merging.
++This constitution supersedes all other project guidance documents.
+ 
+-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
++**Version**: 1.0.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-19
+diff --git a/target/.specify/templates/tasks-template.md b/target/.specify/templates/tasks-template.md
+index d46a1f1..36b65e4 100644
+--- a/target/.specify/templates/tasks-template.md
++++ b/target/.specify/templates/tasks-template.md
+@@ -9,7 +9,7 @@ description: "Task list template for feature implementation"
+ 
+ **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
+ 
+-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
++**Tests**: The examples below include test tasks. Per the project constitution, tests are MANDATORY — every new route ships with a happy-path and at least one error-path test, with minimum 80% line coverage on changed files.
+ 
+ **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+ 
+@@ -80,7 +80,7 @@ Examples of foundational tasks (adjust based on your project):
+ 
+ **Independent Test**: [How to verify this story works on its own]
+ 
+-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
++### Tests for User Story 1 (MANDATORY per constitution)
+ 
+ > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+ 
+@@ -106,7 +106,7 @@ Examples of foundational tasks (adjust based on your project):
+ 
+ **Independent Test**: [How to verify this story works on its own]
+ 
+-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
++### Tests for User Story 2 (MANDATORY per constitution)
+ 
+ - [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
+ - [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+@@ -128,7 +128,7 @@ Examples of foundational tasks (adjust based on your project):
+ 
+ **Independent Test**: [How to verify this story works on its own]
+ 
+-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
++### Tests for User Story 3 (MANDATORY per constitution)
+ 
+ - [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
+ - [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+@@ -154,7 +154,7 @@ Examples of foundational tasks (adjust based on your project):
+ - [ ] TXXX [P] Documentation updates in docs/
+ - [ ] TXXX Code cleanup and refactoring
+ - [ ] TXXX Performance optimization across all stories
+-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
++- [ ] TXXX [P] Additional unit tests in tests/unit/
+ - [ ] TXXX Security hardening
+ - [ ] TXXX Run quickstart.md validation
+ 
+@@ -179,7 +179,7 @@ Examples of foundational tasks (adjust based on your project):
+ 
+ ### Within Each User Story
+ 
+-- Tests (if included) MUST be written and FAIL before implementation
++- Tests MUST be written and FAIL before implementation (non-optional per constitution)
+ - Models before services
+ - Services before endpoints
+ - Core implementation before integration
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+index 7e6443a..ee05769 100644
+--- a/target/CLAUDE.md
++++ b/target/CLAUDE.md
+@@ -1,4 +1,55 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
++
+ <!-- SPECKIT START -->
+-For additional context about technologies to be used, project structure,
+-shell commands, and other important information, read the current plan
++## Active Feature
++
++**Plan**: [specs/001-api-rate-limiting/plan.md](specs/001-api-rate-limiting/plan.md)
+ <!-- SPECKIT END -->
+diff --git a/target/specs/001-api-rate-limiting/checklists/requirements.md b/target/specs/001-api-rate-limiting/checklists/requirements.md
+new file mode 100644
+index 0000000..69c9490
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/checklists/requirements.md
+@@ -0,0 +1,34 @@
++# Specification Quality Checklist: API Rate Limiting
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-05-19
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [x] No implementation details (languages, frameworks, APIs)
++- [x] Focused on user value and business needs
++- [x] Written for non-technical stakeholders
++- [x] All mandatory sections completed
++
++## Requirement Completeness
++
++- [x] No [NEEDS CLARIFICATION] markers remain
++- [x] Requirements are testable and unambiguous
++- [x] Success criteria are measurable
++- [x] Success criteria are technology-agnostic (no implementation details)
++- [x] All acceptance scenarios are defined
++- [x] Edge cases are identified
++- [x] Scope is clearly bounded
++- [x] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [x] All functional requirements have clear acceptance criteria
++- [x] User scenarios cover primary flows
++- [x] Feature meets measurable outcomes defined in Success Criteria
++- [x] No implementation details leak into specification
++
++## Notes
++
++- All items pass. Spec is ready for `/speckit-clarify` or `/speckit-plan`.
+diff --git a/target/specs/001-api-rate-limiting/contracts/rate-limit-error.md b/target/specs/001-api-rate-limiting/contracts/rate-limit-error.md
+new file mode 100644
+index 0000000..2b3d35f
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/contracts/rate-limit-error.md
+@@ -0,0 +1,36 @@
++# Contract: Rate Limit Error Response
++
++**Feature**: `001-api-rate-limiting`
++**Triggered when**: A client exceeds their quota for the current window.
++
++## HTTP Status
++
++`429 Too Many Requests`
++
++## Response Body
++
++```json
++{
++  "detail": "Rate limit exceeded",
++  "retry_after": 37
++}
++```
++
++### Fields
++
++| Field         | Type    | Description                                      |
++|---------------|---------|--------------------------------------------------|
++| `detail`      | string  | Always the literal string `"Rate limit exceeded"`|
++| `retry_after` | integer | Seconds until the rate limit window resets       |
++
++## Response Headers
++
++All standard `X-RateLimit-*` headers are present (see `rate-limit-headers.md`),
++plus `Retry-After` (seconds until reset).
++
++## Consistency with Existing Error Format
++
++This body uses the same `{"detail": "..."}` shape as FastAPI's built-in error
++responses (e.g., 404 Not Found, 409 Conflict, 422 Unprocessable Entity), so
++clients using generic error handling will work without changes.
++The `retry_after` field is additive and does not break existing error parsers.
+diff --git a/target/specs/001-api-rate-limiting/contracts/rate-limit-headers.md b/target/specs/001-api-rate-limiting/contracts/rate-limit-headers.md
+new file mode 100644
+index 0000000..2e60cad
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/contracts/rate-limit-headers.md
+@@ -0,0 +1,44 @@
++# Contract: Rate Limit Response Headers
++
++**Feature**: `001-api-rate-limiting`
++**Applies to**: All API responses (every endpoint, every HTTP method)
++
++## Headers Present on Every Response
++
++### `X-RateLimit-Limit`
++
++- **Type**: integer string
++- **Value**: The configured maximum number of requests allowed per window for this scope.
++- **Example**: `X-RateLimit-Limit: 100`
++
++### `X-RateLimit-Remaining`
++
++- **Type**: integer string, minimum `0`
++- **Value**: Number of requests the client may still make in the current window.
++  Never goes below `0`, even when the client is rate-limited.
++- **Example**: `X-RateLimit-Remaining: 42`
++
++### `X-RateLimit-Reset`
++
++- **Type**: integer string (Unix timestamp, seconds since epoch)
++- **Value**: The point in time at which the current window expires and the counter
++  resets. Clients may resume at or after this timestamp.
++- **Example**: `X-RateLimit-Reset: 1716163200`
++
++## Additional Header on 429 Responses Only
++
++### `Retry-After`
++
++- **Type**: integer string (seconds)
++- **Value**: Number of seconds the client MUST wait before retrying.
++  Equivalent to `X-RateLimit-Reset - current_unix_time`, rounded up.
++- **Example**: `Retry-After: 37`
++- **Reference**: RFC 6585, Section 4.
++
++## Invariants
++
++- All four `X-RateLimit-*` headers MUST be present on all responses, including 429s.
++- `Retry-After` MUST only appear on 429 responses.
++- `X-RateLimit-Remaining` MUST be `0` when `Retry-After` is present.
++- `X-RateLimit-Reset` and `Retry-After` MUST be consistent:
++  `Retry-After == X-RateLimit-Reset - floor(current_unix_time)`.
+diff --git a/target/specs/001-api-rate-limiting/data-model.md b/target/specs/001-api-rate-limiting/data-model.md
+new file mode 100644
+index 0000000..6e60e94
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/data-model.md
+@@ -0,0 +1,70 @@
++# Data Model: API Rate Limiting
++
++**Feature**: `001-api-rate-limiting`
++**Date**: 2026-05-19
++
++## Overview
++
++Rate limiting uses only in-memory state. No database tables are added or modified.
++All structures live within the middleware instance and are discarded on process restart.
++
++## In-Memory State
++
++### Counter Store
++
++```
++_counters: dict[tuple[str, int], int]
++```
++
++- **Key**: `(scope_key, window_start)` where:
++  - `scope_key` — string identifying the client: user ID (from `X-User-Id` header)
++    or IP address (from `request.client.host`) when no user header is present.
++  - `window_start` — Unix timestamp (integer seconds) of when the current window began,
++    derived as `floor(current_time / window_seconds) * window_seconds`.
++- **Value**: integer count of requests made by this scope in this window.
++- **Concurrency**: reads and writes are protected by a single `threading.Lock` instance.
++
++### State Lifecycle
++
++- Entries are created on first request from a scope within a window.
++- Old window entries are never explicitly deleted (minor memory leak for long-lived
++  processes with many unique scopes). Acceptable for this service's scale; a cleanup
++  pass can be added later if needed.
++
++## Pydantic Schemas (New)
++
++### `RateLimitError` (response body for 429)
++
++```python
++class RateLimitError(BaseModel):
++    detail: str        # Always "Rate limit exceeded"
++    retry_after: int   # Seconds until the current window resets
++```
++
++Lives in `src/api/middleware/rate_limiter.py` alongside the middleware class.
++
++## HTTP Response Headers (all responses)
++
++| Header                  | Type    | Description                                        |
++|-------------------------|---------|----------------------------------------------------|
++| `X-RateLimit-Limit`     | integer | Configured quota per window                        |
++| `X-RateLimit-Remaining` | integer | Requests remaining in current window (min 0)       |
++| `X-RateLimit-Reset`     | integer | Unix timestamp when the current window resets      |
++| `Retry-After`           | integer | Seconds until reset — present on 429 responses only|
++
++## Scope Resolution Logic
++
++```
++if "X-User-Id" in request.headers:
++    scope_key = f"user:{request.headers['X-User-Id']}"
++else:
++    scope_key = f"ip:{request.client.host}"
++```
++
++Prefixing with `user:` / `ip:` avoids collisions between a user ID that happens to
++match an IP address string.
++
++## No Database Changes
++
++- `User`, `Order`, and `OrderItem` models are unchanged.
++- No migrations needed.
+diff --git a/target/specs/001-api-rate-limiting/plan.md b/target/specs/001-api-rate-limiting/plan.md
+new file mode 100644
+index 0000000..10f8d58
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/plan.md
+@@ -0,0 +1,91 @@
++# Implementation Plan: API Rate Limiting
++
++**Branch**: `001-api-rate-limiting` | **Date**: 2026-05-19 | **Spec**: [spec.md](spec.md)
++
++**Input**: Feature specification from `specs/001-api-rate-limiting/spec.md`
++
++## Summary
++
++Add per-scope (user or IP) fixed-window rate limiting to all API endpoints via
++FastAPI middleware. Clients exceeding 100 requests per 60-second window receive a
++429 response with a retry signal. All responses carry `X-RateLimit-*` headers.
++Implemented entirely with Python stdlib — no new dependencies.
++
++## Technical Context
++
++**Language/Version**: Python 3.11+
++
++**Primary Dependencies**: FastAPI 0.115.0, Pydantic v2 (stdlib `time`, `threading` only
++for rate limiting — no new packages)
++
++**Storage**: In-memory dict (process-local, does not survive restart — acceptable per spec)
++
++**Testing**: pytest 8.3.3 with existing `client` fixture from `tests/conftest.py`
++
++**Target Platform**: Linux/macOS server (uvicorn)
++
++**Project Type**: web-service
++
++**Performance Goals**: Rate limit check adds no measurable latency to normal requests
++(in-memory dict lookup + lock acquisition, O(1))
++
++**Constraints**: No new third-party dependencies; middleware must not touch the database;
++must not break existing tests
++
++**Scale/Scope**: Single-process service; in-memory state is sufficient
++
++## Constitution Check
++
++*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
++
++| Principle | Status | Notes |
++|-----------|--------|-------|
++| Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest | ✅ Pass | All existing stack; no deviations |
++| Idiomatic FastAPI: small route functions, Pydantic models, Depends | ✅ Pass | Middleware layer; no route changes; `RateLimitError` Pydantic model for 429 body |
++| Tests non-optional; 80% coverage; happy-path + error-path per route | ✅ Pass | `tests/test_rate_limiter.py` will cover both paths |
++| Conventional commits | ✅ Pass | Commit will use `feat: add API rate limiting` |
++| No new third-party dependencies without justification | ✅ Pass | Stdlib only (`time`, `threading`) |
++| Type hints on every public function and route handler | ✅ Pass | Middleware dispatch method and all helpers typed |
++| Don't refactor unrelated code | ✅ Pass | Only `main.py` (add_middleware call) and new files touched |
++
++**Post-design re-check**: All gates pass. No Complexity Tracking entries required.
++
++## Project Structure
++
++### Documentation (this feature)
++
++```text
++specs/001-api-rate-limiting/
++├── plan.md              # This file
++├── research.md          # Phase 0 output
++├── data-model.md        # Phase 1 output
++├── quickstart.md        # Phase 1 output
++├── contracts/
++│   ├── rate-limit-headers.md
++│   └── rate-limit-error.md
++└── tasks.md             # Phase 2 output (/speckit-tasks — not created here)
++```
++
++### Source Code (repository root)
++
++```text
++src/api/
++├── middleware/
++│   └── rate_limiter.py      # NEW: RateLimiterMiddleware + RateLimitError schema
++├── main.py                  # MODIFIED: app.add_middleware(RateLimiterMiddleware, ...)
++├── models.py                # unchanged
++├── deps.py                  # unchanged
++└── routes/
++    ├── users.py             # unchanged
++    └── orders.py            # unchanged
++
++tests/
++├── conftest.py              # unchanged
++├── test_rate_limiter.py     # NEW: rate limiter tests
++├── test_users.py            # unchanged (regression check)
++└── test_orders.py           # unchanged (regression check)
++```
++
++**Structure Decision**: Single project layout (existing). Rate limiter lives in
++`src/api/middleware/rate_limiter.py` — the directory was already created and empty,
++signalling this location was anticipated. No new top-level directories.
+diff --git a/target/specs/001-api-rate-limiting/quickstart.md b/target/specs/001-api-rate-limiting/quickstart.md
+new file mode 100644
+index 0000000..0da2ddf
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/quickstart.md
+@@ -0,0 +1,90 @@
++# Quickstart: Verifying API Rate Limiting
++
++**Feature**: `001-api-rate-limiting`
++**Date**: 2026-05-19
++
++## Prerequisites
++
++```bash
++pip install -e ".[dev]"
++uvicorn api.main:app --reload
++```
++
++The server runs on `http://localhost:8000` by default.
++
++## 1. Verify Rate Limit Headers on Normal Requests
++
++Any request within quota should return the three `X-RateLimit-*` headers:
++
++```bash
++curl -s -I http://localhost:8000/health
++```
++
++Expected headers in response:
++```
++X-RateLimit-Limit: 100
++X-RateLimit-Remaining: 99
++X-RateLimit-Reset: <unix timestamp>
++```
++
++## 2. Verify Per-User Scoping
++
++Two different users have independent counters:
++
++```bash
++curl -s -I -H "X-User-Id: 1" http://localhost:8000/health
++curl -s -I -H "X-User-Id: 2" http://localhost:8000/health
++```
++
++Both should show `X-RateLimit-Remaining: 99` — independent windows.
++
++## 3. Trigger a Rate Limit (429)
++
++Send requests over the limit. With defaults (100 req/60 s) this script
++exhausts the quota and triggers a 429:
++
++```bash
++for i in $(seq 1 101); do
++  curl -s -o /dev/null -w "%{http_code}\n" -H "X-User-Id: 999" http://localhost:8000/health
++done
++```
++
++The 101st request should return `429`. Verify the body:
++
++```bash
++curl -s -H "X-User-Id: 999" http://localhost:8000/health | python3 -m json.tool
++```
++
++Expected:
++```json
++{
++  "detail": "Rate limit exceeded",
++  "retry_after": 37
++}
++```
++
++And headers include `Retry-After: 37` (or similar seconds-until-reset value).
++
++## 4. Verify Reset After Window
++
++After the window resets (wait for `Retry-After` seconds), confirm the client
++can make requests again:
++
++```bash
++sleep <retry_after_value>
++curl -s -I -H "X-User-Id: 999" http://localhost:8000/health
++```
++
++Expected: `HTTP/1.1 200 OK` with `X-RateLimit-Remaining: 99`.
++
++## 5. Run the Test Suite
++
++```bash
++pytest tests/test_rate_limiter.py -v
++```
++
++All tests should pass. Run the full suite to check for regressions:
++
++```bash
++pytest
++```
+diff --git a/target/specs/001-api-rate-limiting/research.md b/target/specs/001-api-rate-limiting/research.md
+new file mode 100644
+index 0000000..85ec10a
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/research.md
+@@ -0,0 +1,103 @@
++# Research: API Rate Limiting
++
++**Feature**: `001-api-rate-limiting`
++**Date**: 2026-05-19
++
++## Decision 1: Rate-Limit Algorithm
++
++**Decision**: Fixed (tumbling) window counter.
++
++**Rationale**: The spec states "fixed sliding or tumbling time window". Tumbling window
++is the simplest correct implementation — each scope gets a fresh counter at the start
++of every 60-second window. The count is deterministic and easy to reason about in tests.
++
++**Alternatives considered**:
++- Sliding window log: fair but O(n) memory per scope per window; no benefit for this service.
++- Token bucket: smoother burst control but harder to expose "remaining" count correctly.
++- Leaky bucket: suited for rate-shaping, not hard limits; wrong fit here.
++
++## Decision 2: Storage Mechanism
++
++**Decision**: In-memory `dict` keyed on `(scope, window_start_unix)` → request count,
++protected by a `threading.Lock`.
++
++**Rationale**: The spec explicitly allows in-memory storage (assumption: "does not need
++to survive a service restart"). No external dependencies are needed; `time` and
++`threading` are stdlib. The `threading.Lock` prevents race conditions under uvicorn's
++threaded worker model.
++
++**Alternatives considered**:
++- Redis: required for multi-process/distributed deployments, but out of scope here.
++- SQLite: would survive restarts but adds unnecessary I/O overhead for a hot-path check.
++
++## Decision 3: Implementation Layer
++
++**Decision**: FastAPI `BaseHTTPMiddleware` in `src/api/middleware/rate_limiter.py`,
++registered via `app.add_middleware()` in `main.py`.
++
++**Rationale**: FR-004 requires rate limiting on ALL endpoints without each route opting
++in. Middleware is the correct layer — it intercepts every request before it reaches any
++route handler. The project already has an empty `src/api/middleware/` directory, which
++signals this was anticipated. No route files need to be touched.
++
++**Alternatives considered**:
++- FastAPI `Depends()` per route: violates FR-004 (would require modifying every route).
++- ASGI middleware at server level: possible but harder to test with FastAPI's TestClient.
++
++## Decision 4: Scope Identification
++
++**Decision**: Check the `X-User-Id` request header first; fall back to
++`request.client.host` (IP address) if the header is absent.
++
++**Rationale**: Matches FR-005 exactly. Reuses the existing `X-User-Id` convention from
++`deps.py` without coupling middleware to the database. The middleware does NOT validate
++that the user ID exists — it trusts the header value as a scope key. Route-level auth
++remains responsible for validating user identity.
++
++**Alternatives considered**:
++- IP-only: loses per-user fairness and would allow a single user to exhaust a shared IP quota.
++- Coupling to `get_current_user` dep: would require a DB call in every middleware pass —
++  adds latency and tight coupling.
++
++## Decision 5: Response Headers
++
++**Decision**: Attach the following headers to every response (including 429s):
++
++| Header                  | Value                                         |
++|-------------------------|-----------------------------------------------|
++| `X-RateLimit-Limit`     | Configured quota (e.g. `100`)                 |
++| `X-RateLimit-Remaining` | Remaining requests in current window          |
++| `X-RateLimit-Reset`     | Unix timestamp when the current window resets |
++| `Retry-After`           | Seconds until reset (429 responses only)      |
++
++**Rationale**: These four headers are the de-facto standard (used by GitHub, Stripe,
++Twitter/X). They cover FR-002 and FR-003 fully. `Retry-After` is included only on 429
++responses per RFC 6585.
++
++**Alternatives considered**:
++- `RateLimit-*` (IETF draft): not yet widely adopted; `X-RateLimit-*` is universally
++  understood.
++
++## Decision 6: 429 Response Body
++
++**Decision**: JSON body `{"detail": "Rate limit exceeded", "retry_after": <int>}`.
++
++**Rationale**: Consistent with FastAPI's built-in error format (`{"detail": "..."}`)
++used by existing routes (e.g. 404, 409, 401 responses). Adding `retry_after` gives
++clients the seconds-until-reset value in the body as well as the `Retry-After` header.
++
++## Decision 7: Configuration
++
++**Decision**: Middleware accepts `limit` (int, default 100) and `window_seconds` (int,
++default 60) constructor parameters. Registered in `main.py` with explicit values so the
++defaults are visible at the call site.
++
++**Rationale**: No additional config system is needed. The spec treats these as
++configurable values, not hard-coded business rules. Constructor params make the
++middleware independently testable with arbitrary limits.
++
++## No New Dependencies Required
++
++All implementation uses Python stdlib (`time`, `threading`, `collections`) and FastAPI's
++built-in `BaseHTTPMiddleware`. The constitution's "No new third-party dependencies
++without a stated justification" principle is satisfied.
+diff --git a/target/specs/001-api-rate-limiting/spec.md b/target/specs/001-api-rate-limiting/spec.md
+new file mode 100644
+index 0000000..357eaed
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/spec.md
+@@ -0,0 +1,123 @@
++# Feature Specification: API Rate Limiting
++
++**Feature Branch**: `001-api-rate-limiting`
++
++**Created**: 2026-05-19
++
++**Status**: Draft
++
++**Input**: User description: "Add rate limiting to the API."
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Client Blocked When Quota Exceeded (Priority: P1)
++
++A client that sends requests too frequently within a time window receives a clear
++rejection response telling them they have been rate-limited and when they may retry.
++
++**Why this priority**: Enforcement is the core value of rate limiting. Without it
++the feature does not exist.
++
++**Independent Test**: Send requests beyond the configured limit and verify a
++rejection response with a retry signal is returned — no further requests from that
++scope are served until the window resets.
++
++**Acceptance Scenarios**:
++
++1. **Given** a client has consumed their full request quota for the current window,
++   **When** they send one additional request,
++   **Then** the system rejects it with a rate-limit error and indicates when the
++   client may retry.
++
++2. **Given** a client is rate-limited,
++   **When** the time window resets,
++   **Then** the client's next request is accepted normally.
++
++3. **Given** a client is rate-limited,
++   **When** they inspect the rejection response,
++   **Then** the response clearly identifies the reason as rate limiting and includes
++   a retry signal.
++
++---
++
++### User Story 2 - Client Can Monitor Remaining Quota (Priority: P2)
++
++Every API response includes rate limit status so clients can proactively manage
++their request cadence and avoid hitting the limit unexpectedly.
++
++**Why this priority**: Visibility prevents disruption for well-behaved clients and
++is required for any production integration.
++
++**Independent Test**: Make a single request within quota and verify the response
++carries the allowed limit, how many requests remain, and when the window resets.
++
++**Acceptance Scenarios**:
++
++1. **Given** a client makes any API request within their quota,
++   **When** the response is received,
++   **Then** it includes the total allowed requests per window, the remaining requests
++   in the current window, and the time at which the window resets.
++
++2. **Given** a client has used exactly half their quota,
++   **When** they inspect the response,
++   **Then** the remaining count reflects their actual usage so far.
++
++---
++
++### Edge Cases
++
++- What happens when two requests arrive simultaneously and together would exceed the limit?
++- How does the system handle clients with no identifiable scope (no user header, no IP)?
++- What happens if the request count store is temporarily unavailable?
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: System MUST reject requests that exceed the configured rate limit for
++  the client's scope and return a response indicating the client is rate-limited.
++- **FR-002**: System MUST include a retry signal in rate-limit rejection responses
++  so clients know when they may resume requests.
++- **FR-003**: System MUST attach rate limit status (limit, remaining, reset time) to
++  every API response, including both accepted and rejected requests.
++- **FR-004**: System MUST apply rate limiting consistently across all API endpoints.
++- **FR-005**: System MUST scope rate limits per authenticated user when a user
++  identity is present, and fall back to the client's network address otherwise.
++- **FR-006**: System MUST enforce limits within a fixed sliding or tumbling time
++  window of 60 seconds, allowing 100 requests per window per scope by default.
++
++### Key Entities
++
++- **Rate Limit Scope**: The identity against which requests are counted (user ID or
++  IP address).
++- **Request Window**: The fixed time interval (60 seconds by default) over which
++  requests are counted and the quota is enforced.
++- **Quota**: The maximum number of requests allowed per scope per window (100 by
++  default).
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: Clients that exceed their quota receive a rate-limit rejection
++  response within the same response time as a normal request (no added latency for
++  the enforcement check itself).
++- **SC-002**: 100% of API responses include rate limit status information.
++- **SC-003**: Rate limiting applies uniformly — no endpoint is exempt.
++- **SC-004**: After a window reset, a previously rate-limited client can immediately
++  resume requests without manual intervention.
++- **SC-005**: Zero legitimate requests (within quota) are incorrectly rejected under
++  normal operating conditions.
++
++## Assumptions
++
++- Authenticated clients are identified by the existing user identity header already
++  present in the API; no new authentication mechanism is introduced.
++- The default quota (100 requests per 60-second window) is sufficient for initial
++  deployment; the values are configuration, not hard-coded business logic.
++- All API endpoints are subject to the same rate limit policy; per-endpoint
++  differentiation is out of scope for this feature.
++- The retry signal communicated to clients is a point in time (seconds until reset),
++  not a guaranteed reservation of capacity.
++- Persistence of request counts does not need to survive a service restart; in-memory
++  tracking is acceptable for this initial implementation.
+diff --git a/target/specs/001-api-rate-limiting/tasks.md b/target/specs/001-api-rate-limiting/tasks.md
+new file mode 100644
+index 0000000..6cfcc37
+--- /dev/null
++++ b/target/specs/001-api-rate-limiting/tasks.md
+@@ -0,0 +1,176 @@
++---
++description: "Task list for API Rate Limiting feature implementation"
++---
++
++# Tasks: API Rate Limiting
++
++**Input**: Design documents from `specs/001-api-rate-limiting/`
++
++**Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/ ✅
++
++**Tests**: Per the project constitution, tests are MANDATORY — every new route ships
++with a happy-path and at least one error-path test, with minimum 80% line coverage
++on changed files.
++
++**Organization**: Tasks are grouped by user story to enable independent implementation
++and testing of each story.
++
++## Format: `[ID] [P?] [Story?] Description`
++
++- **[P]**: Can run in parallel (different files, no dependencies)
++- **[Story]**: Which user story this task belongs to (US1, US2)
++- Exact file paths are included in all descriptions
++
++## Path Conventions
++
++- Single project layout: `src/api/` and `tests/` at repository root
++- New file: `src/api/middleware/rate_limiter.py`
++- Modified file: `src/api/main.py`
++- New test file: `tests/test_rate_limiter.py`
++
++---
++
++## Phase 1: Setup
++
++**Purpose**: Create the middleware module files so subsequent tasks have a home.
++
++- [x] T001 Create `src/api/middleware/__init__.py` (empty file to make middleware a package)
++- [x] T002 [P] Create `src/api/middleware/rate_limiter.py` with `RateLimitError` Pydantic model (`detail: str`, `retry_after: int`) and `RateLimiterMiddleware` class skeleton with `__init__(self, app, limit: int = 100, window_seconds: int = 60)`, `_counters: dict`, and `_lock: threading.Lock`
++
++---
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++**Purpose**: Implement the shared helper methods that both user stories depend on.
++No user story work can begin until this phase is complete.
++
++- [x] T003 Implement `_get_scope(request) -> str` in `src/api/middleware/rate_limiter.py` — returns `f"user:{X-User-Id value}"` if the `X-User-Id` header is present, else `f"ip:{request.client.host}"`
++- [x] T004 Implement `_get_window_start(self) -> int` in `src/api/middleware/rate_limiter.py` — returns `int(time.time() // self.window_seconds) * self.window_seconds`
++
++**Checkpoint**: Middleware helpers ready — user story implementation can now begin.
++
++---
++
++## Phase 3: User Story 1 - Client Blocked When Quota Exceeded (Priority: P1) 🎯 MVP
++
++**Goal**: When a client exceeds their quota, they receive a 429 response with a
++`Retry-After` signal telling them when they can resume.
++
++**Independent Test**: `pytest tests/test_rate_limiter.py -k "exceed or blocked or reset"`
++
++> **NOTE: Write test tasks T005–T007 FIRST and confirm they FAIL before implementing T008–T009**
++
++### Tests for User Story 1 (MANDATORY per constitution)
++
++- [x] T005 [US1] Write test `test_request_over_limit_returns_429`: configure middleware with `limit=2`, make 3 requests from the same scope, assert the third returns HTTP 429 with body `{"detail": "Rate limit exceeded", "retry_after": <positive int>}` in `tests/test_rate_limiter.py`
++- [x] T006 [US1] Write test `test_429_includes_retry_after_header_and_zero_remaining`: assert a rate-limited response includes `Retry-After` header and `X-RateLimit-Remaining: 0` in `tests/test_rate_limiter.py`
++- [x] T007 [US1] Write test `test_scope_allowed_after_window_reset`: patch `time.time` to advance past the window boundary, assert the previously-blocked scope receives 200 on the next request in `tests/test_rate_limiter.py`
++
++### Implementation for User Story 1
++
++- [x] T008 [US1] Implement `RateLimiterMiddleware.dispatch()` in `src/api/middleware/rate_limiter.py` — acquire `_lock`, compute scope and window start, increment counter, if count exceeds `limit` return `JSONResponse(RateLimitError(...).model_dump(), status_code=429)` with `Retry-After` and all `X-RateLimit-*` headers; otherwise call `await call_next(request)` and proceed
++- [x] T009 [US1] Register middleware in `src/api/main.py`: add `app.add_middleware(RateLimiterMiddleware, limit=100, window_seconds=60)` after the existing imports and before router inclusion
++
++**Checkpoint**: US1 independently functional — clients hitting the limit receive 429 with a retry signal.
++
++---
++
++## Phase 4: User Story 2 - Client Can Monitor Remaining Quota (Priority: P2)
++
++**Goal**: Every API response (including 200s) carries `X-RateLimit-Limit`,
++`X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers so clients can proactively
++manage their request rate.
++
++**Independent Test**: `pytest tests/test_rate_limiter.py -k "header or remaining or scope or fallback"`
++
++> **NOTE: Write test tasks T010–T013 FIRST and confirm they FAIL before implementing T014**
++
++### Tests for User Story 2 (MANDATORY per constitution)
++
++- [x] T010 [US2] Write test `test_200_response_includes_ratelimit_headers`: assert a normal (within-quota) response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers with integer-string values in `tests/test_rate_limiter.py`
++- [x] T011 [US2] Write test `test_remaining_decrements_per_request`: configure `limit=5`, make 3 requests from the same scope, assert `X-RateLimit-Remaining` reads `4`, `3`, `2` on successive responses in `tests/test_rate_limiter.py`
++- [x] T012 [US2] Write test `test_independent_scopes_have_independent_counters`: make requests with `X-User-Id: 1` and `X-User-Id: 2` interleaved, assert each scope's `X-RateLimit-Remaining` decrements independently in `tests/test_rate_limiter.py`
++- [x] T013 [US2] Write test `test_ip_fallback_scope_when_no_user_header`: make a request with no `X-User-Id` header, assert `X-RateLimit-Remaining` is present and decrements on the second headerless request in `tests/test_rate_limiter.py`
++
++### Implementation for User Story 2
++
++- [x] T014 [US2] Extend the pass-through path in `RateLimiterMiddleware.dispatch()` in `src/api/middleware/rate_limiter.py` — after `await call_next(request)` returns, mutate the response to add `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers before returning it
++
++**Checkpoint**: US1 and US2 both independently functional — all responses carry quota headers.
++
++---
++
++## Phase 5: Polish & Cross-Cutting Concerns
++
++**Purpose**: Regression verification and end-to-end validation.
++
++- [x] T015 Run `pytest` (full suite) and confirm all rate limiter tests pass and no regressions in `tests/test_users.py`, `tests/test_orders.py`, `tests/test_dates.py`
++- [ ] T016 [P] Follow all curl validation steps in `specs/001-api-rate-limiting/quickstart.md` against a running `uvicorn api.main:app` server to confirm end-to-end behavior
++
++---
++
++## Dependencies & Execution Order
++
++### Phase Dependencies
++
++- **Setup (Phase 1)**: No dependencies — T001 and T002 can start immediately and run in parallel
++- **Foundational (Phase 2)**: Depends on Phase 1 (T003 and T004 require the file from T002) — BLOCKS all user stories
++- **User Story 1 (Phase 3)**: Depends on Foundational phase; write T005–T007 first (failing tests), then T008–T009
++- **User Story 2 (Phase 4)**: Depends on Phase 3 (T014 extends the `dispatch()` implemented in T008); write T010–T013 first (failing tests), then T014
++- **Polish (Phase 5)**: Depends on both user stories complete
++
++### User Story Dependencies
++
++- **US1 (P1)**: Unblocks after Foundational complete. No dependency on US2.
++- **US2 (P2)**: Depends on US1 (extends the same `dispatch()` method written in T008).
++
++### Within Each User Story
++
++- Tests MUST be written and FAIL before implementation (non-optional per constitution)
++- Helpers (`_get_scope`, `_get_window_start`) before `dispatch()`
++- `dispatch()` before `add_middleware` registration
++- Registration before end-to-end validation
++
++### Parallel Opportunities
++
++- T001 and T002 can run in parallel (different new files, no dependencies)
++- T016 can run in parallel with any non-server-running task in Phase 5
++
++---
++
++## Parallel Example: Setup Phase
++
++```bash
++# Launch both setup tasks together (different files, no deps):
++Task: "Create src/api/middleware/__init__.py"           # T001
++Task: "Create src/api/middleware/rate_limiter.py ..."   # T002
++```
++
++---
++
++## Implementation Strategy
++
++### MVP (User Story 1 Only)
++
++1. Complete Phase 1: Setup
++2. Complete Phase 2: Foundational (CRITICAL — blocks everything)
++3. Complete Phase 3: User Story 1
++4. **STOP and VALIDATE**: `pytest tests/test_rate_limiter.py -k "exceed or blocked or reset"`
++5. Rate limiting is live and enforced — shippable MVP
++
++### Incremental Delivery
++
++1. Setup + Foundational → middleware module exists
++2. US1 → 429 enforcement live → deploy/demo (MVP)
++3. US2 → quota headers on all responses → deploy/demo
++4. Polish → full regression + quickstart validation
++
++---
++
++## Notes
++
++- `[P]` tasks touch different files with no mutual dependencies
++- `[Story]` label maps each task to the user story it serves
++- TDD ordering is required by constitution: tests before implementation within each phase
++- `dispatch()` is a single method — T008 (enforcement path) and T014 (header injection path) are additive changes to the same function; T014 depends on T008
++- No database changes; no new dependencies; `src/api/middleware/` dir already exists
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..d4743fd 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
+ from fastapi import FastAPI
+ 
+ from api.deps import engine
++from api.middleware.rate_limiter import RateLimiterMiddleware
+ from api.models import Base
+ from api.routes import orders, users
+ 
+@@ -15,6 +16,8 @@ async def lifespan(_: FastAPI):
+ 
+ app = FastAPI(title="benchmark-target", lifespan=lifespan)
+ 
++app.add_middleware(RateLimiterMiddleware, limit=100, window_seconds=60)
++
+ app.include_router(users.router)
+ app.include_router(orders.router)
+ 
+diff --git a/target/src/api/middleware/__init__.py b/target/src/api/middleware/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/target/src/api/middleware/rate_limiter.py b/target/src/api/middleware/rate_limiter.py
+new file mode 100644
+index 0000000..de15e8a
+--- /dev/null
++++ b/target/src/api/middleware/rate_limiter.py
+@@ -0,0 +1,67 @@
++import threading
++import time
++from typing import Callable
++
++from fastapi import Request
++from fastapi.responses import JSONResponse
++from pydantic import BaseModel
++from starlette.middleware.base import BaseHTTPMiddleware
++from starlette.responses import Response
++from starlette.types import ASGIApp
++
++
++class RateLimitError(BaseModel):
++    detail: str
++    retry_after: int
++
++
++class RateLimiterMiddleware(BaseHTTPMiddleware):
++    def __init__(self, app: ASGIApp, limit: int = 100, window_seconds: int = 60) -> None:
++        super().__init__(app)
++        self.limit = limit
++        self.window_seconds = window_seconds
++        self._counters: dict[tuple[str, int], int] = {}
++        self._lock = threading.Lock()
++
++    def _get_scope(self, request: Request) -> str:
++        user_id = request.headers.get("X-User-Id")
++        if user_id:
++            return f"user:{user_id}"
++        host = request.client.host if request.client else "unknown"
++        return f"ip:{host}"
++
++    def _get_window_start(self) -> int:
++        return int(time.time() // self.window_seconds) * self.window_seconds
++
++    async def dispatch(self, request: Request, call_next: Callable) -> Response:
++        now = time.time()
++        window_start = self._get_window_start()
++        scope = self._get_scope(request)
++        reset_ts = window_start + self.window_seconds
++        retry_after = max(1, int(reset_ts - now))
++
++        with self._lock:
++            key = (scope, window_start)
++            count = self._counters.get(key, 0) + 1
++            self._counters[key] = count
++
++        remaining = max(0, self.limit - count)
++
++        if count > self.limit:
++            error = RateLimitError(detail="Rate limit exceeded", retry_after=retry_after)
++            return JSONResponse(
++                content=error.model_dump(),
++                status_code=429,
++                headers={
++                    "X-RateLimit-Limit": str(self.limit),
++                    "X-RateLimit-Remaining": "0",
++                    "X-RateLimit-Reset": str(reset_ts),
++                    "Retry-After": str(retry_after),
++                },
++            )
++
++        response = await call_next(request)
++        response.headers["X-RateLimit-Limit"] = str(self.limit)
++        response.headers["X-RateLimit-Remaining"] = str(remaining)
++        response.headers["X-RateLimit-Reset"] = str(reset_ts)
++        return response
+diff --git a/target/tests/test_rate_limiter.py b/target/tests/test_rate_limiter.py
+new file mode 100644
+index 0000000..310dd3c
+--- /dev/null
++++ b/target/tests/test_rate_limiter.py
+@@ -0,0 +1,106 @@
++from unittest.mock import patch
++
++import pytest
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++
++from api.middleware.rate_limiter import RateLimiterMiddleware
++
++
++def make_app(limit: int = 2, window_seconds: int = 60) -> FastAPI:
++    app = FastAPI()
++
++    @app.get("/ping")
++    def ping():
++        return {"ok": True}
++
++    app.add_middleware(RateLimiterMiddleware, limit=limit, window_seconds=window_seconds)
++    return app
++
++
++@pytest.fixture
++def rl_client():
++    return TestClient(make_app(limit=2, window_seconds=60))
++
++
++# --- US1: Enforcement ---
++
++
++def test_request_over_limit_returns_429(rl_client):
++    rl_client.get("/ping", headers={"X-User-Id": "u1"})
++    rl_client.get("/ping", headers={"X-User-Id": "u1"})
++    r = rl_client.get("/ping", headers={"X-User-Id": "u1"})
++    assert r.status_code == 429
++    body = r.json()
++    assert body["detail"] == "Rate limit exceeded"
++    assert isinstance(body["retry_after"], int)
++    assert body["retry_after"] > 0
++
++
++def test_429_includes_retry_after_header_and_zero_remaining(rl_client):
++    rl_client.get("/ping", headers={"X-User-Id": "u2"})
++    rl_client.get("/ping", headers={"X-User-Id": "u2"})
++    r = rl_client.get("/ping", headers={"X-User-Id": "u2"})
++    assert r.status_code == 429
++    assert "Retry-After" in r.headers
++    assert int(r.headers["Retry-After"]) > 0
++    assert r.headers["X-RateLimit-Remaining"] == "0"
++
++
++def test_scope_allowed_after_window_reset():
++    base_time = 1_000_000.0
++    app = make_app(limit=1, window_seconds=60)
++    client = TestClient(app)
++
++    with patch("api.middleware.rate_limiter.time") as mock_time:
++        mock_time.time.return_value = base_time
++        client.get("/ping", headers={"X-User-Id": "u3"})
++        r = client.get("/ping", headers={"X-User-Id": "u3"})
++        assert r.status_code == 429
++
++        mock_time.time.return_value = base_time + 61
++        r2 = client.get("/ping", headers={"X-User-Id": "u3"})
++        assert r2.status_code == 200
++
++
++# --- US2: Rate Limit Headers on All Responses ---
++
++
++def test_200_response_includes_ratelimit_headers(rl_client):
++    r = rl_client.get("/ping", headers={"X-User-Id": "u10"})
++    assert r.status_code == 200
++    assert "X-RateLimit-Limit" in r.headers
++    assert "X-RateLimit-Remaining" in r.headers
++    assert "X-RateLimit-Reset" in r.headers
++    assert int(r.headers["X-RateLimit-Limit"]) == 2
++    assert int(r.headers["X-RateLimit-Remaining"]) == 1
++    assert int(r.headers["X-RateLimit-Reset"]) > 0
++
++
++def test_remaining_decrements_per_request():
++    client = TestClient(make_app(limit=5, window_seconds=60))
++    r1 = client.get("/ping", headers={"X-User-Id": "u20"})
++    r2 = client.get("/ping", headers={"X-User-Id": "u20"})
++    r3 = client.get("/ping", headers={"X-User-Id": "u20"})
++    assert r1.headers["X-RateLimit-Remaining"] == "4"
++    assert r2.headers["X-RateLimit-Remaining"] == "3"
++    assert r3.headers["X-RateLimit-Remaining"] == "2"
++
++
++def test_independent_scopes_have_independent_counters():
++    client = TestClient(make_app(limit=5, window_seconds=60))
++    client.get("/ping", headers={"X-User-Id": "user_a"})
++    client.get("/ping", headers={"X-User-Id": "user_a"})
++    r_a = client.get("/ping", headers={"X-User-Id": "user_a"})
++    r_b = client.get("/ping", headers={"X-User-Id": "user_b"})
++    assert r_a.headers["X-RateLimit-Remaining"] == "2"
++    assert r_b.headers["X-RateLimit-Remaining"] == "4"
++
++
++def test_ip_fallback_scope_when_no_user_header():
++    client = TestClient(make_app(limit=5, window_seconds=60))
++    r1 = client.get("/ping")
++    r2 = client.get("/ping")
++    assert "X-RateLimit-Remaining" in r1.headers
++    assert int(r1.headers["X-RateLimit-Remaining"]) == 4
++    assert int(r2.headers["X-RateLimit-Remaining"]) == 3

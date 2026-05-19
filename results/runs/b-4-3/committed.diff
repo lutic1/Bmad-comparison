@@ -1,0 +1,1483 @@
+diff --git a/target/.specify/feature.json b/target/.specify/feature.json
+new file mode 100644
+index 0000000..1df726e
+--- /dev/null
++++ b/target/.specify/feature.json
+@@ -0,0 +1,3 @@
++{
++  "feature_directory": "specs/001-checkout-discount-code"
++}
+diff --git a/target/.specify/memory/constitution.md b/target/.specify/memory/constitution.md
+index a4670ff..c493f4c 100644
+--- a/target/.specify/memory/constitution.md
++++ b/target/.specify/memory/constitution.md
+@@ -1,50 +1,59 @@
+-# [PROJECT_NAME] Constitution
+-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
++<!--
++Sync Impact Report:
++- Version change: (none) → 1.0.0 (initial ratification from template)
++- Added sections: Core Principles (7 principles), Governance
++- Removed sections: Section 2, Section 3 (no content provided in constitution body)
++- Templates reviewed:
++  - .specify/templates/plan-template.md ✅ (Constitution Check section is generic; no update needed)
++  - .specify/templates/spec-template.md ✅ (requirements structure aligned with principles; no update needed)
++  - .specify/templates/tasks-template.md ✅ (task phases and test discipline align with testing principle; no update needed)
++- No deferred TODOs
++-->
++
++# benchmark-target Constitution
+ 
+ ## Core Principles
+ 
+-### [PRINCIPLE_1_NAME]
+-<!-- Example: I. Library-First -->
+-[PRINCIPLE_1_DESCRIPTION]
+-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
++### I. Technology Stack
+ 
+-### [PRINCIPLE_2_NAME]
+-<!-- Example: II. CLI Interface -->
+-[PRINCIPLE_2_DESCRIPTION]
+-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
++Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest.
+ 
+-### [PRINCIPLE_3_NAME]
+-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+-[PRINCIPLE_3_DESCRIPTION]
+-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
++### II. API Design
+ 
+-### [PRINCIPLE_4_NAME]
+-<!-- Example: IV. Integration Testing -->
+-[PRINCIPLE_4_DESCRIPTION]
+-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
++Idiomatic FastAPI: small route functions, Pydantic models for
++request and response shapes, dependency injection via Depends.
+ 
+-### [PRINCIPLE_5_NAME]
+-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+-[PRINCIPLE_5_DESCRIPTION]
+-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
++### III. Testing (NON-NEGOTIABLE)
+ 
+-## [SECTION_2_NAME]
+-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
++Tests are non-optional. Minimum 80% line coverage on changed files.
++Every new route ships with happy-path and at least one error-path
++test.
+ 
+-[SECTION_2_CONTENT]
+-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
++### IV. Commit Conventions
+ 
+-## [SECTION_3_NAME]
+-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
++Conventional commits: feat:, fix:, refactor:, test:, docs:, chore:.
+ 
+-[SECTION_3_CONTENT]
+-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
++### V. Dependency Management
++
++No new third-party dependencies without a stated justification.
++
++### VI. Type Safety
++
++Type hints on every public function and route handler.
++
++### VII. Scope Discipline
++
++Don't refactor unrelated code in the same change.
+ 
+ ## Governance
+-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+ 
+-[GOVERNANCE_RULES]
+-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
++This constitution supersedes all other practices. Amendments MUST be documented,
++versioned using MAJOR.MINOR.PATCH semantic versioning, and reflected in this file.
++
++- MAJOR: Backward-incompatible removal or redefinition of a principle.
++- MINOR: New principle added or materially expanded.
++- PATCH: Clarification, wording fix, or non-semantic refinement.
++
++All PRs and reviews MUST verify compliance with the principles above.
+ 
+-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
++**Version**: 1.0.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-19
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+index 7e6443a..f36e878 100644
+--- a/target/CLAUDE.md
++++ b/target/CLAUDE.md
+@@ -1,4 +1,53 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
++
+ <!-- SPECKIT START -->
+-For additional context about technologies to be used, project structure,
+-shell commands, and other important information, read the current plan
++**Active feature plan**: [specs/001-checkout-discount-code/plan.md](specs/001-checkout-discount-code/plan.md)
+ <!-- SPECKIT END -->
+diff --git a/target/specs/001-checkout-discount-code/checklists/requirements.md b/target/specs/001-checkout-discount-code/checklists/requirements.md
+new file mode 100644
+index 0000000..e94ab06
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/checklists/requirements.md
+@@ -0,0 +1,37 @@
++# Specification Quality Checklist: Checkout Discount Code
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-05-19
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [x] No implementation details (languages, frameworks, APIs)
++- [x] Focused on user value and business needs
++- [x] Written for non-technical stakeholders
++- [x] All mandatory sections completed
++
++## Requirement Completeness
++
++- [x] No [NEEDS CLARIFICATION] markers remain
++- [x] Requirements are testable and unambiguous
++- [x] Success criteria are measurable
++- [x] Success criteria are technology-agnostic (no implementation details)
++- [x] All acceptance scenarios are defined
++- [x] Edge cases are identified
++- [x] Scope is clearly bounded
++- [x] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [x] All functional requirements have clear acceptance criteria
++- [x] User scenarios cover primary flows
++- [x] Feature meets measurable outcomes defined in Success Criteria
++- [x] No implementation details leak into specification
++
++## Notes
++
++- All items pass. Spec is ready for `/speckit-plan`.
++- FR-010 captures the "Include tests" requirement from the user description as a testability mandate.
++- Three discount tiers (5%, 10%, 20%) are fully specified with no ambiguity.
++- Scope boundary is clear: code management UI is explicitly out of scope.
+diff --git a/target/specs/001-checkout-discount-code/contracts/discount-endpoints.md b/target/specs/001-checkout-discount-code/contracts/discount-endpoints.md
+new file mode 100644
+index 0000000..da46b9f
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/contracts/discount-endpoints.md
+@@ -0,0 +1,141 @@
++# API Contracts: Discount Code Endpoints
++
++All endpoints are authenticated via the `X-User-Id` header (same as existing order endpoints).
++Ownership is enforced: the authenticated user must own the target order.
++
++---
++
++## POST /orders/{order_id}/discount-code
++
++Apply a discount code to an order. If another code is already applied, it is replaced atomically.
++
++### Request
++
++**Headers**
++```
++X-User-Id: <integer>   (required)
++Content-Type: application/json
++```
++
++**Path parameters**
++| Name      | Type | Required | Description   |
++|-----------|------|----------|---------------|
++| order_id  | int  | Yes      | Order to discount |
++
++**Body**
++```json
++{
++  "code": "SAVE10"
++}
++```
++
++| Field | Type   | Required | Constraints                | Notes                        |
++|-------|--------|----------|----------------------------|------------------------------|
++| code  | string | Yes      | Non-empty                  | Case-insensitive; normalized to uppercase |
++
++### Responses
++
++**200 OK** — Discount applied (or replaced). Returns updated order.
++```json
++{
++  "id": 42,
++  "user_id": 7,
++  "total": 900,
++  "discount_code": "SAVE10",
++  "discount_amount_cents": 100,
++  "created_at": "2026-19-05",
++  "items": [
++    { "sku": "WIDGET", "quantity": 1, "unit_price": 1000 }
++  ]
++}
++```
++
++**401 Unauthorized** — Missing or invalid `X-User-Id` header.
++```json
++{ "detail": "unauthorized" }
++```
++
++**403 Forbidden** — Authenticated user does not own the order.
++```json
++{ "detail": "forbidden" }
++```
++
++**404 Not Found** — Order does not exist.
++```json
++{ "detail": "order not found" }
++```
++
++**422 Unprocessable Entity** — Discount code is not recognized.
++```json
++{ "detail": "invalid discount code" }
++```
++
++---
++
++## DELETE /orders/{order_id}/discount-code
++
++Remove the currently applied discount code from an order, restoring the original total.
++
++### Request
++
++**Headers**
++```
++X-User-Id: <integer>   (required)
++```
++
++**Path parameters**
++| Name      | Type | Required | Description              |
++|-----------|------|----------|--------------------------|
++| order_id  | int  | Yes      | Order to remove discount from |
++
++**Body**: None
++
++### Responses
++
++**200 OK** — Discount removed. Returns updated order with restored total.
++```json
++{
++  "id": 42,
++  "user_id": 7,
++  "total": 1000,
++  "discount_code": null,
++  "discount_amount_cents": 0,
++  "created_at": "2026-19-05",
++  "items": [
++    { "sku": "WIDGET", "quantity": 1, "unit_price": 1000 }
++  ]
++}
++```
++
++**400 Bad Request** — No discount code is currently applied to this order.
++```json
++{ "detail": "no discount code applied" }
++```
++
++**401 Unauthorized** — Missing or invalid `X-User-Id` header.
++```json
++{ "detail": "unauthorized" }
++```
++
++**403 Forbidden** — Authenticated user does not own the order.
++```json
++{ "detail": "forbidden" }
++```
++
++**404 Not Found** — Order does not exist.
++```json
++{ "detail": "order not found" }
++```
++
++---
++
++## Business Rules Summary
++
++| Rule                              | Enforcement Point         |
++|-----------------------------------|---------------------------|
++| Code must exist in discount_codes | POST handler, 422          |
++| Only one active code per order    | POST handler replaces silently |
++| Removal requires an active code   | DELETE handler, 400        |
++| User must own the order           | Both handlers, 403         |
++| Discount computed on current total| POST handler (post-restoration if replacing) |
++| Total never goes negative         | Capped at 0 (consistent with adjust_total) |
+diff --git a/target/specs/001-checkout-discount-code/data-model.md b/target/specs/001-checkout-discount-code/data-model.md
+new file mode 100644
+index 0000000..ae818e6
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/data-model.md
+@@ -0,0 +1,118 @@
++# Data Model: Checkout Discount Code
++
++## New Entity: DiscountCode
++
++**Table**: `discount_codes`
++
++| Column           | Type        | Constraints                        | Notes                            |
++|------------------|-------------|-------------------------------------|----------------------------------|
++| id               | Integer     | PK, autoincrement                  |                                  |
++| code             | String(64)  | unique, not null, index            | Stored uppercase                 |
++| discount_percent | Integer     | not null, check in {5, 10, 20}     | Percentage: 5, 10, or 20        |
++| created_at       | DateTime    | not null, default=utcnow           |                                  |
++
++**Validation rules**:
++- `discount_percent` MUST be one of: 5, 10, 20.
++- `code` is normalized to uppercase before storage and lookup.
++- Uniqueness is enforced at the DB level on the `code` column.
++
++**SQLAlchemy model (declarative `Mapped[...]` style)**:
++```python
++class DiscountCode(Base):
++    __tablename__ = "discount_codes"
++    id: Mapped[int] = mapped_column(primary_key=True)
++    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
++    discount_percent: Mapped[int] = mapped_column()
++    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
++    orders: Mapped[list["Order"]] = relationship(back_populates="discount_code")
++```
++
++**Seed data** (loaded idempotently at startup):
++| code     | discount_percent |
++|----------|-----------------|
++| SAVE5    | 5               |
++| SAVE10   | 10              |
++| SAVE20   | 20              |
++
++---
++
++## Modified Entity: Order
++
++**Table**: `orders` — two new nullable columns added.
++
++| Column               | Type    | Constraints              | Notes                                   |
++|----------------------|---------|--------------------------|------------------------------------------|
++| discount_code_id     | Integer | FK(discount_codes.id), nullable | NULL when no discount applied     |
++| discount_amount_cents| Integer | not null, default=0      | Cents deducted from total; 0 = no discount |
++
++**State transitions**:
++
++```
++[no discount]
++    total = original_total
++    discount_code_id = NULL
++    discount_amount_cents = 0
++
++  -- POST /orders/{id}/discount-code (valid code) -->
++
++[discount applied]
++    total = original_total - discount_amount_cents
++    discount_code_id = <code.id>
++    discount_amount_cents = round(pre-discount-total * percent / 100)
++
++  -- DELETE /orders/{id}/discount-code -->
++
++[no discount]  (total restored)
++```
++
++**Replacement (apply code when one already active)**:
++1. Restore: `total += current discount_amount_cents`
++2. Recalculate on restored total, apply new code.
++
++**SQLAlchemy additions to Order**:
++```python
++discount_code_id: Mapped[int | None] = mapped_column(
++    ForeignKey("discount_codes.id"), nullable=True, default=None
++)
++discount_amount_cents: Mapped[int] = mapped_column(default=0)
++discount_code: Mapped["DiscountCode | None"] = relationship(
++    back_populates="orders", foreign_keys=[discount_code_id]
++)
++```
++
++---
++
++## Relationships
++
++```
++DiscountCode (1) ──< Order (many)
++  one DiscountCode can be referenced by many orders
++  one Order references at most one DiscountCode (nullable)
++```
++
++---
++
++## Pydantic Schemas
++
++### Request
++
++```python
++class DiscountCodeApply(BaseModel):
++    code: str  # e.g., "SAVE10" — normalized to uppercase in route
++```
++
++### Response (extended OrderOut)
++
++```python
++class OrderOut(BaseModel):
++    id: int
++    user_id: int
++    total: int                    # cents, post-discount
++    discount_code: str | None     # code string or null
++    discount_amount_cents: int    # 0 when no discount
++    created_at: str
++    items: list[OrderItemOut]
++    model_config = ConfigDict(from_attributes=True)
++```
++
++> Note: `discount_code` is the string representation (e.g., `"SAVE10"`) resolved from the relationship, not the FK id.
+diff --git a/target/specs/001-checkout-discount-code/plan.md b/target/specs/001-checkout-discount-code/plan.md
+new file mode 100644
+index 0000000..8498770
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/plan.md
+@@ -0,0 +1,146 @@
++# Implementation Plan: Checkout Discount Code
++
++**Branch**: `001-checkout-discount-code` | **Date**: 2026-05-19 | **Spec**: [spec.md](spec.md)
++
++**Input**: Feature specification from `/specs/001-checkout-discount-code/spec.md`
++
++## Summary
++
++Add two endpoints (`POST` and `DELETE` on `/orders/{order_id}/discount-code`) that let authenticated users apply or remove a pre-configured percentage discount code (5%, 10%, or 20%) from an order. Codes are seeded into a new `discount_codes` table at startup; the `orders` table gains two new columns (`discount_code_id`, `discount_amount_cents`) to track the applied discount. All monetary arithmetic follows the existing integer-cents convention.
++
++## Technical Context
++
++**Language/Version**: Python 3.11+
++
++**Primary Dependencies**: FastAPI 0.115, SQLAlchemy 2.0.35, Pydantic 2.9.2 — all existing; no new dependencies.
++
++**Storage**: SQLite via SQLAlchemy. New table `discount_codes`; two new columns on `orders`. Schema auto-created at startup via `Base.metadata.create_all`. Operator wipes `app.db` on schema changes.
++
++**Testing**: pytest with in-memory SQLite via existing `client` fixture in `tests/conftest.py`.
++
++**Target Platform**: Linux/macOS server (unchanged from existing service).
++
++**Project Type**: Web service (FastAPI REST API).
++
++**Performance Goals**: Standard synchronous FastAPI response times; no special targets for this feature.
++
++**Constraints**: No new third-party dependencies. Integer cents throughout. No float arithmetic on monetary values post-input.
++
++**Scale/Scope**: Same as existing service; feature adds 2 endpoints, 1 new table, 2 new columns.
++
++## Constitution Check
++
++*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
++
++| Principle                  | Gate                                                          | Status |
++|----------------------------|---------------------------------------------------------------|--------|
++| I. Technology Stack        | Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest   | ✅ Pass — existing stack only, no new dependencies |
++| II. API Design             | Small route functions, Pydantic models, Depends injection     | ✅ Pass — two focused route functions, DiscountCodeApply/OrderOut schemas, get_current_user injected |
++| III. Testing               | ≥80% line coverage on changed files; happy-path + error-path per route | ✅ Pass — tests/test_discounts.py covers all 3 user stories |
++| IV. Commit Conventions     | feat: prefix for new feature                                  | ✅ Pass — commit will be `feat: add checkout discount code endpoint` |
++| V. Dependency Management   | No new third-party dependencies                               | ✅ Pass — no new packages required |
++| VI. Type Safety            | Type hints on all public functions and route handlers         | ✅ Pass — all new functions and handlers will be fully typed |
++| VII. Scope Discipline      | No unrelated refactoring                                      | ✅ Pass — only discount code feature touched |
++
++**All gates pass. No violations to justify.**
++
++## Project Structure
++
++### Documentation (this feature)
++
++```text
++specs/001-checkout-discount-code/
++├── plan.md              # This file
++├── research.md          # Phase 0 output
++├── data-model.md        # Phase 1 output
++├── quickstart.md        # Phase 1 output
++├── contracts/
++│   └── discount-endpoints.md   # Phase 1 output
++└── tasks.md             # Phase 2 output (/speckit-tasks — NOT created here)
++```
++
++### Source Code (repository root)
++
++```text
++src/api/
++├── models.py                    # MODIFIED: add DiscountCode model, extend Order
++├── main.py                      # MODIFIED: seed discount codes in lifespan, include discounts router
++└── routes/
++    ├── orders.py                # UNMODIFIED (discount logic in separate file)
++    └── discounts.py             # NEW: POST + DELETE /orders/{order_id}/discount-code
++
++tests/
++└── test_discounts.py            # NEW: full test coverage for discount feature
++```
++
++**Structure Decision**: Single project layout (existing). New router file `discounts.py` keeps discount logic isolated from order CRUD while sharing the `/orders` URL prefix.
++
++## Implementation Notes
++
++### Model changes (`src/api/models.py`)
++
++1. Add `DiscountCode` model (table: `discount_codes`):
++   - `id: Mapped[int]` — PK
++   - `code: Mapped[str]` — `String(64)`, unique, indexed
++   - `discount_percent: Mapped[int]` — 5, 10, or 20
++   - `created_at: Mapped[datetime]` — default utcnow
++   - `orders: Mapped[list["Order"]]` — relationship back_populates
++
++2. Add to `Order`:
++   - `discount_code_id: Mapped[int | None]` — FK → discount_codes.id, nullable, default None
++   - `discount_amount_cents: Mapped[int]` — default 0
++   - `discount_code: Mapped["DiscountCode | None"]` — relationship, back_populates
++
++### Startup seeding (`src/api/main.py`)
++
++In `lifespan`, after `Base.metadata.create_all`, seed codes idempotently:
++```python
++SEED_CODES = [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]
++for code_str, pct in SEED_CODES:
++    if not db.query(DiscountCode).filter_by(code=code_str).first():
++        db.add(DiscountCode(code=code_str, discount_percent=pct))
++db.commit()
++```
++
++### Route logic (`src/api/routes/discounts.py`)
++
++**POST `/orders/{order_id}/discount-code`**:
++1. Resolve order (404 if missing), verify ownership (403).
++2. Look up code (case-insensitive, 422 if not found).
++3. If discount already applied: restore `order.total += order.discount_amount_cents`.
++4. Compute `discount_amount_cents = round(order.total * code.discount_percent / 100)`.
++5. Apply: `order.total = max(0, order.total - discount_amount_cents)`.
++6. Set `order.discount_code_id`, `order.discount_amount_cents`.
++7. Commit and return updated `OrderOut`.
++
++**DELETE `/orders/{order_id}/discount-code`**:
++1. Resolve order (404), verify ownership (403).
++2. If no discount applied (discount_code_id is None): 400.
++3. Restore: `order.total += order.discount_amount_cents`.
++4. Clear: `order.discount_code_id = None`, `order.discount_amount_cents = 0`.
++5. Commit and return updated `OrderOut`.
++
++### Pydantic schemas
++
++- `DiscountCodeApply(BaseModel)`: `code: str`
++- `OrderOut` — extend existing (or redefine in discounts.py) to include `discount_code: str | None` and `discount_amount_cents: int`.
++
++### Test coverage (`tests/test_discounts.py`)
++
++| Test | Story | Path |
++|------|-------|------|
++| apply valid 5% code → total reduced correctly | US1 | happy |
++| apply valid 10% code → total reduced correctly | US1 | happy |
++| apply valid 20% code → total reduced correctly | US1 | happy |
++| apply code, confirm order → discount_code recorded | US1 | happy |
++| apply second code → replaces first, total recalculated | US1 | edge |
++| apply invalid code → 422 | US2 | error |
++| apply unrecognized code → 422 | US2 | error |
++| apply code without auth → 401 | US2 | error |
++| apply code to another user's order → 403 | US2 | error |
++| remove applied code → total restored | US3 | happy |
++| remove when no code applied → 400 | US3 | error |
++
++## Complexity Tracking
++
++> No constitution violations. Section left blank.
+diff --git a/target/specs/001-checkout-discount-code/quickstart.md b/target/specs/001-checkout-discount-code/quickstart.md
+new file mode 100644
+index 0000000..3b6d466
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/quickstart.md
+@@ -0,0 +1,111 @@
++# Quickstart: Checkout Discount Code
++
++Validate the feature end-to-end using `curl` against a running local server (`uvicorn src.api.main:app`).
++
++## Prerequisites
++
++- Server running on `http://localhost:8000`
++- Fresh `app.db` (wipe if upgrading from a previous schema)
++- Seed codes `SAVE5`, `SAVE10`, `SAVE20` are loaded automatically at startup
++
++---
++
++## Step 1 — Create a user
++
++```bash
++curl -s -X POST http://localhost:8000/users \
++  -H "Content-Type: application/json" \
++  -d '{"email": "alice@example.com", "name": "Alice"}' | python3 -m json.tool
++```
++
++Note the returned `id` (e.g., `1`). Use it as `USER_ID` below.
++
++---
++
++## Step 2 — Create an order
++
++```bash
++curl -s -X POST http://localhost:8000/orders \
++  -H "Content-Type: application/json" \
++  -H "X-User-Id: 1" \
++  -d '{
++    "items": [
++      {"sku": "WIDGET-A", "quantity": 2, "unit_price": 5.00}
++    ]
++  }' | python3 -m json.tool
++```
++
++Expected: order with `total: 1000` (2 × $5.00 = $10.00 = 1000 cents). Note the `id` (e.g., `1`).
++
++---
++
++## Step 3 — Apply a 10% discount code
++
++```bash
++curl -s -X POST http://localhost:8000/orders/1/discount-code \
++  -H "Content-Type: application/json" \
++  -H "X-User-Id: 1" \
++  -d '{"code": "SAVE10"}' | python3 -m json.tool
++```
++
++Expected response:
++```json
++{
++  "id": 1,
++  "total": 900,
++  "discount_code": "SAVE10",
++  "discount_amount_cents": 100,
++  ...
++}
++```
++
++---
++
++## Step 4 — Apply a different code (replacement)
++
++```bash
++curl -s -X POST http://localhost:8000/orders/1/discount-code \
++  -H "Content-Type: application/json" \
++  -H "X-User-Id: 1" \
++  -d '{"code": "SAVE20"}' | python3 -m json.tool
++```
++
++Expected: `total: 800`, `discount_code: "SAVE20"`, `discount_amount_cents: 200` (20% of original 1000).
++
++---
++
++## Step 5 — Remove the discount
++
++```bash
++curl -s -X DELETE http://localhost:8000/orders/1/discount-code \
++  -H "X-User-Id: 1" | python3 -m json.tool
++```
++
++Expected: `total: 1000`, `discount_code: null`, `discount_amount_cents: 0`.
++
++---
++
++## Step 6 — Verify invalid code is rejected
++
++```bash
++curl -s -X POST http://localhost:8000/orders/1/discount-code \
++  -H "Content-Type: application/json" \
++  -H "X-User-Id: 1" \
++  -d '{"code": "FAKECODE"}' | python3 -m json.tool
++```
++
++Expected: `422` with `{"detail": "invalid discount code"}`.
++
++---
++
++## Step 7 — Run the test suite
++
++```bash
++pytest tests/test_discounts.py -v
++```
++
++All tests should pass. To run the full suite:
++
++```bash
++pytest
++```
+diff --git a/target/specs/001-checkout-discount-code/research.md b/target/specs/001-checkout-discount-code/research.md
+new file mode 100644
+index 0000000..b83b0d0
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/research.md
+@@ -0,0 +1,43 @@
++# Research: Checkout Discount Code
++
++## Technical Decisions
++
++### Decision 1: No New Dependencies Required
++- **Decision**: Implement entirely with the existing stack (FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest).
++- **Rationale**: The feature requires a DB lookup, arithmetic, and two HTTP endpoints — all covered by existing libraries. Adding a dependency for percentage math or coupon validation would violate constitution principle V.
++- **Alternatives considered**: None applicable; stdlib `round()` is sufficient for cent arithmetic.
++
++### Decision 2: Monetary Arithmetic — Integer Cents
++- **Decision**: Discount amounts are computed and stored as integer cents, consistent with the project's existing pattern (`total`, `unit_price` columns).
++- **Rationale**: The codebase already uses `int(round(dollars * 100))` for all monetary values. Diverging from this would introduce inconsistency and float-precision bugs.
++- **Formula**: `discount_cents = round(order.total * percent / 100)` where `order.total` is already in cents.
++
++### Decision 3: DiscountCode Table Seeded at Startup
++- **Decision**: Pre-configured discount codes are stored in a `discount_codes` DB table, seeded idempotently during the FastAPI `lifespan` startup hook.
++- **Rationale**: The project has no migration system and no admin UI. Seeding in `lifespan` (already used for `Base.metadata.create_all`) is the established pattern for one-time setup. Codes can be added by re-seeding.
++- **Alternatives considered**:
++  - Hard-coded list in route logic — rejected; not stored/queryable, no extensibility.
++  - Admin CRUD endpoints — out of scope per spec.
++
++### Decision 4: Order-Level Tracking via Two New Columns
++- **Decision**: Add two nullable columns to the `orders` table: `discount_code_id` (FK) and `discount_amount_cents` (int, default 0).
++- **Rationale**: Avoids a join table (overkill for one-code-per-order) and follows the inline approach already used for `total`. Storing `discount_amount_cents` separately allows restoration of the original total without a separate `original_total` column.
++- **Restore formula**: `order.total += order.discount_amount_cents` then clear both fields.
++- **Alternatives considered**: `original_total` column — rejected as redundant; the discount amount is sufficient to reverse the operation.
++
++### Decision 5: Route Placement — New `discounts.py` Router
++- **Decision**: New endpoints live in `src/api/routes/discounts.py` with `APIRouter(prefix="/orders", tags=["discounts"])`, included in `main.py`.
++- **Rationale**: Endpoints operate on order sub-resources (`/orders/{order_id}/discount-code`) but discount logic is distinct from order CRUD. A dedicated file keeps orders.py focused without requiring a URL prefix change.
++- **Alternatives considered**: Adding to `orders.py` — feasible, but would grow the file with unrelated logic.
++
++### Decision 6: Case-Insensitive Code Lookup
++- **Decision**: Codes are stored uppercase in the DB; incoming codes are `.upper()`-normalized before lookup.
++- **Rationale**: Spec assumption: "discount code lookup is case-insensitive." Normalization at write and read time is the simplest implementation.
++
++### Decision 7: Replace-on-Reapply Semantics
++- **Decision**: Applying a new code to an order that already has a code restores the previous discount before applying the new one (atomic swap in a single DB transaction).
++- **Rationale**: Spec FR-007 requires one active code at a time; spec edge case says "applying a new code replaces the previous one."
++
++## Resolved Unknowns
++
++All technical unknowns resolved from codebase inspection. No NEEDS CLARIFICATION items remain.
+diff --git a/target/specs/001-checkout-discount-code/spec.md b/target/specs/001-checkout-discount-code/spec.md
+new file mode 100644
+index 0000000..623c0e4
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/spec.md
+@@ -0,0 +1,101 @@
++# Feature Specification: Checkout Discount Code
++
++**Feature Branch**: `001-checkout-discount-code`
++
++**Created**: 2026-05-19
++
++**Status**: Draft
++
++**Input**: User description: "Add a feature where users can apply a percentage discount code at checkout. Discounts can be 5%, 10%, or 20%. Include tests."
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Apply Valid Discount Code (Priority: P1)
++
++A user enters a discount code during checkout and the system applies the corresponding percentage discount to their order total, showing the reduced price before they confirm the purchase.
++
++**Why this priority**: This is the core value of the feature — without successful discount application, nothing else matters.
++
++**Independent Test**: Can be fully tested by submitting a known valid discount code at checkout and verifying the displayed total reflects the correct percentage reduction.
++
++**Acceptance Scenarios**:
++
++1. **Given** a user has items in their cart and is on the checkout screen, **When** they enter a valid 10% discount code and submit it, **Then** the system displays the original total, the discount amount (10% of original), and the new discounted total.
++2. **Given** a user has applied a valid discount code, **When** they confirm the order, **Then** the order is created with the discounted total recorded.
++3. **Given** valid discount codes exist for 5%, 10%, and 20%, **When** each is applied to an order with the same total, **Then** the system correctly calculates and displays 5%, 10%, and 20% savings respectively.
++
++---
++
++### User Story 2 - Reject Invalid Discount Code (Priority: P2)
++
++A user enters an unrecognized or invalid discount code and the system informs them clearly, leaving their order total unchanged.
++
++**Why this priority**: Without proper validation and feedback, users cannot distinguish a typo from an expired code, eroding trust.
++
++**Independent Test**: Can be fully tested by submitting an unrecognized discount code string and verifying the order total is unchanged and an error message is displayed.
++
++**Acceptance Scenarios**:
++
++1. **Given** a user is on the checkout screen, **When** they enter a discount code that does not exist, **Then** the system displays an error message and the order total remains unchanged.
++2. **Given** a user has entered an invalid discount code, **When** they correct it to a valid code and resubmit, **Then** the discount is applied successfully.
++
++---
++
++### User Story 3 - Remove Applied Discount Code (Priority: P3)
++
++A user who has already applied a discount code can remove it, restoring the original order total.
++
++**Why this priority**: Users may apply a discount by mistake or change their mind; inability to remove it would force order cancellation.
++
++**Independent Test**: Can be fully tested by applying a valid code, then removing it, and verifying the total returns to its original value.
++
++**Acceptance Scenarios**:
++
++1. **Given** a user has applied a valid discount code, **When** they choose to remove the discount, **Then** the order total is restored to the original amount and the discount code field is cleared.
++
++---
++
++### Edge Cases
++
++- What happens when a user tries to apply a second discount code while one is already applied? The second code replaces the first (one code per order at a time).
++- What happens when the order total is zero? The discount code can still be applied but the discounted amount is zero.
++- What happens if the user modifies their cart (adds/removes items) after applying a discount code? The discount percentage remains applied and recalculates against the new total.
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: System MUST allow users to enter a discount code during checkout before order confirmation.
++- **FR-002**: System MUST validate the entered discount code against the set of known valid codes.
++- **FR-003**: System MUST support exactly three discount percentages: 5%, 10%, and 20%.
++- **FR-004**: System MUST calculate the discounted total by subtracting the code's percentage of the original order total.
++- **FR-005**: System MUST display the original total, the discount amount, and the discounted total to the user after a valid code is applied.
++- **FR-006**: System MUST reject unrecognized discount codes with a clear, user-facing error message.
++- **FR-007**: System MUST allow only one discount code to be active per order at a time; applying a new code replaces the previous one.
++- **FR-008**: Users MUST be able to remove an applied discount code, which restores the original order total.
++- **FR-009**: System MUST record which discount code and percentage were applied on the completed order.
++- **FR-010**: Tests MUST be included covering happy-path application of each discount tier and at least one invalid-code error path.
++
++### Key Entities
++
++- **DiscountCode**: A redeemable code string associated with a fixed percentage (5%, 10%, or 20%). Pre-configured in the system; not user-created in this feature.
++- **Order**: A purchase in progress or completed. May have at most one discount code applied. Stores both original total and discounted total when a code is used.
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: Users can enter a discount code and see the updated total without leaving the checkout screen.
++- **SC-002**: 100% of unrecognized discount codes are rejected with an informative error message before the order is placed.
++- **SC-003**: Discount calculations are accurate for all three supported tiers (5%, 10%, 20%) across any order total.
++- **SC-004**: Users can remove an applied discount code and the original total is immediately restored without reloading the page or restarting checkout.
++- **SC-005**: All new code paths have automated test coverage for at least the happy path and one error path per user story.
++
++## Assumptions
++
++- Discount codes are pre-configured in the system by administrators; creating or managing codes is out of scope for this feature.
++- Discount codes do not expire and have no per-user or global usage limits in this version.
++- The existing checkout flow is the integration point; this feature adds a discount code input step to it.
++- Users must be authenticated to reach checkout (existing auth mechanism applies; no new auth logic required).
++- Discounts are applied to the pre-tax order subtotal; tax calculation on the discounted amount is handled by the existing checkout flow.
++- Discount code lookup and validation are case-insensitive.
+diff --git a/target/specs/001-checkout-discount-code/tasks.md b/target/specs/001-checkout-discount-code/tasks.md
+new file mode 100644
+index 0000000..c2c2d41
+--- /dev/null
++++ b/target/specs/001-checkout-discount-code/tasks.md
+@@ -0,0 +1,203 @@
++---
++description: "Task list for checkout discount code feature"
++---
++
++# Tasks: Checkout Discount Code
++
++**Input**: Design documents from `/specs/001-checkout-discount-code/`
++
++**Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/ ✅
++
++**Tests**: Included — required by spec FR-010 and constitution Principle III.
++
++**Organization**: Tasks grouped by user story to enable independent implementation and testing.
++
++## Format: `[ID] [P?] [Story?] Description`
++
++- **[P]**: Can run in parallel (different files or independent functions, no unresolved dependencies)
++- **[Story]**: Which user story this task belongs to (US1, US2, US3)
++- Exact file paths included in every task description
++
++## Path Conventions
++
++- Single project: `src/`, `tests/` at repository root
++- New route file: `src/api/routes/discounts.py`
++- New test file: `tests/test_discounts.py`
++
++---
++
++## Phase 1: Setup
++
++**Purpose**: Scaffold new files so foundational and story tasks can be written in parallel.
++
++- [x] T001 Create `src/api/routes/discounts.py` with `APIRouter(prefix="/orders", tags=["discounts"])` stub and no endpoints yet
++- [x] T002 [P] Create `tests/test_discounts.py` with imports (`pytest`, `client` fixture) and a `_make_order` helper that creates a user and an order, returning both IDs
++
++**Checkpoint**: Both files exist; `pytest tests/test_discounts.py` collects 0 tests with no errors.
++
++---
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++**Purpose**: Data model, schema, seeding, and router wiring that ALL user stories depend on.
++
++**⚠️ CRITICAL**: No user story work can begin until this phase is complete.
++
++- [x] T003 Add `DiscountCode` model (`id`, `code`, `discount_percent`, `created_at`, `orders` relationship) to `src/api/models.py` using `Mapped[...]` declarative style
++- [x] T004 Add `discount_code_id` (FK → discount_codes.id, nullable), `discount_amount_cents` (int, default 0), and `discount_code` relationship to `Order` in `src/api/models.py`
++- [x] T005 [P] Extend `OrderOut` in `src/api/routes/orders.py` with two new fields: `discount_code: str | None` and `discount_amount_cents: int` (resolve `discount_code` from the ORM relationship, not the FK id)
++- [x] T006 Seed `SAVE5` (5%), `SAVE10` (10%), `SAVE20` (20%) discount codes idempotently in the `lifespan` startup block in `src/api/main.py` (insert only if `code` not already present)
++- [x] T007 Import and register the discounts router in `src/api/main.py` via `app.include_router(discounts.router)`
++
++**Checkpoint**: `python -c "from src.api.main import app"` imports cleanly; `Base.metadata.tables` includes `discount_codes`.
++
++---
++
++## Phase 3: User Story 1 — Apply Valid Discount Code (Priority: P1) 🎯 MVP
++
++**Goal**: A user submits a valid discount code and sees the reduced total in the response.
++
++**Independent Test**: `POST /orders/{id}/discount-code` with `{"code": "SAVE10"}` on a $10.00 order returns `total: 900`, `discount_amount_cents: 100`.
++
++> **Write tests before implementation — ensure they FAIL before T012.**
++
++### Tests for User Story 1
++
++- [x] T008 [P] [US1] Write `test_apply_save5_reduces_total_by_5_percent` in `tests/test_discounts.py`: create order with total 1000 cents, POST SAVE5, assert `total == 950` and `discount_amount_cents == 50`
++- [x] T009 [P] [US1] Write `test_apply_save10_reduces_total_by_10_percent` in `tests/test_discounts.py`: create order with total 1000 cents, POST SAVE10, assert `total == 900` and `discount_amount_cents == 100`
++- [x] T010 [P] [US1] Write `test_apply_save20_reduces_total_by_20_percent` in `tests/test_discounts.py`: create order with total 1000 cents, POST SAVE20, assert `total == 800` and `discount_amount_cents == 200`
++- [x] T011 [US1] Write `test_apply_second_code_replaces_first_and_recalculates` in `tests/test_discounts.py`: apply SAVE10 then SAVE20, assert final `total == 800` and `discount_code == "SAVE20"` (recalculated on original 1000, not on 900)
++
++### Implementation for User Story 1
++
++- [x] T012 [US1] Implement `POST /orders/{order_id}/discount-code` in `src/api/routes/discounts.py`: resolve order (404), verify ownership (403), look up code case-insensitively (422 if missing), restore previous discount if any, compute `discount_amount_cents = round(order.total * code.discount_percent / 100)`, apply discount (`total = max(0, total - discount_cents)`), set `discount_code_id`, commit, return `OrderOut`
++
++**Checkpoint**: `pytest tests/test_discounts.py::test_apply_save5_reduces_total_by_5_percent tests/test_discounts.py::test_apply_save10_reduces_total_by_10_percent tests/test_discounts.py::test_apply_save20_reduces_total_by_20_percent tests/test_discounts.py::test_apply_second_code_replaces_first_and_recalculates` all pass.
++
++---
++
++## Phase 4: User Story 2 — Reject Invalid Discount Code (Priority: P2)
++
++**Goal**: A user submits an unrecognized or unauthorized code and receives a clear error; the order total is unchanged.
++
++**Independent Test**: `POST /orders/{id}/discount-code` with `{"code": "FAKE"}` returns 422 with `detail: "invalid discount code"`.
++
++> POST handler is already implemented in T012. This phase adds error-path tests only.
++
++### Tests for User Story 2
++
++- [x] T013 [P] [US2] Write `test_apply_unrecognized_code_returns_422` in `tests/test_discounts.py`: POST `{"code": "FAKE99"}`, assert status 422 and order total unchanged
++- [x] T014 [P] [US2] Write `test_apply_without_auth_header_returns_401` in `tests/test_discounts.py`: POST without `X-User-Id` header, assert status 401
++- [x] T015 [P] [US2] Write `test_apply_to_other_users_order_returns_403` in `tests/test_discounts.py`: create two users and one order belonging to user 1, POST as user 2, assert status 403
++- [x] T016 [P] [US2] Write `test_apply_to_nonexistent_order_returns_404` in `tests/test_discounts.py`: POST to `order_id=99999`, assert status 404
++
++**Checkpoint**: `pytest tests/test_discounts.py -k "US2 or test_apply_unrecognized or test_apply_without or test_apply_to_other or test_apply_to_nonexistent"` all pass.
++
++---
++
++## Phase 5: User Story 3 — Remove Applied Discount Code (Priority: P3)
++
++**Goal**: A user removes a previously applied discount code and the original order total is restored.
++
++**Independent Test**: Apply SAVE10 to a 1000-cent order (total becomes 900), then DELETE discount code, assert `total == 1000` and `discount_code == null`.
++
++> **Write tests before implementation — ensure they FAIL before T019.**
++
++### Tests for User Story 3
++
++- [x] T017 [P] [US3] Write `test_remove_applied_code_restores_original_total` in `tests/test_discounts.py`: apply SAVE10 to 1000-cent order, DELETE discount code, assert `total == 1000`, `discount_code == null`, `discount_amount_cents == 0`
++- [x] T018 [P] [US3] Write `test_remove_when_no_code_applied_returns_400` in `tests/test_discounts.py`: DELETE on order with no active code, assert status 400 with `detail: "no discount code applied"`
++
++### Implementation for User Story 3
++
++- [x] T019 [US3] Implement `DELETE /orders/{order_id}/discount-code` in `src/api/routes/discounts.py`: resolve order (404), verify ownership (403), if `discount_code_id` is None raise 400, restore `order.total += order.discount_amount_cents`, set `discount_code_id = None` and `discount_amount_cents = 0`, commit, return `OrderOut`
++
++**Checkpoint**: `pytest tests/test_discounts.py::test_remove_applied_code_restores_original_total tests/test_discounts.py::test_remove_when_no_code_applied_returns_400` pass.
++
++---
++
++## Phase 6: Polish & Cross-Cutting Concerns
++
++**Purpose**: Final validation across all user stories.
++
++- [x] T020 Run `pytest tests/test_discounts.py -v` and confirm all 11 tests pass with no warnings
++- [x] T021 [P] Verify type hints are present on all public functions and route handlers in `src/api/routes/discounts.py` and on new model fields in `src/api/models.py`
++- [x] T022 [P] Run `pytest` (full suite) and confirm no regressions in `tests/test_users.py` or `tests/test_orders.py`
++
++---
++
++## Dependencies & Execution Order
++
++### Phase Dependencies
++
++- **Setup (Phase 1)**: No dependencies — start immediately
++- **Foundational (Phase 2)**: Depends on Phase 1 — BLOCKS all user stories
++- **User Story 1 (Phase 3)**: Depends on Phase 2 — tests must fail before T012
++- **User Story 2 (Phase 4)**: Depends on T012 (POST handler) — tests only, no new implementation
++- **User Story 3 (Phase 5)**: Depends on Phase 2 — independent of Phases 3 and 4
++- **Polish (Phase 6)**: Depends on all story phases complete
++
++### User Story Dependencies
++
++- **US1 (P1)**: Can start after Phase 2
++- **US2 (P2)**: Requires T012 complete (POST handler) — tests only
++- **US3 (P3)**: Can start after Phase 2, independent of US1 and US2
++
++### Within Each User Story
++
++- Tests MUST be written and confirmed FAILING before implementation tasks
++- Implementation tasks commit after all story tests pass
++- Verify story independently before moving to next
++
++### Parallel Opportunities
++
++- T001 and T002 can start together (different files)
++- T003/T004 (models.py) and T005 (orders.py) can be worked in parallel (different files)
++- T008, T009, T010 can be written concurrently (independent test functions)
++- T013, T014, T015, T016 can be written concurrently (independent test functions)
++- T017, T018 can be written concurrently (independent test functions)
++- T021 and T022 can run in parallel
++
++---
++
++## Parallel Example: User Story 1
++
++```bash
++# Write all happy-path tests concurrently:
++Task: "test_apply_save5_reduces_total_by_5_percent in tests/test_discounts.py"   # T008
++Task: "test_apply_save10_reduces_total_by_10_percent in tests/test_discounts.py"  # T009
++Task: "test_apply_save20_reduces_total_by_20_percent in tests/test_discounts.py"  # T010
++
++# Then implement:
++Task: "POST /orders/{order_id}/discount-code handler in src/api/routes/discounts.py"  # T012
++```
++
++---
++
++## Implementation Strategy
++
++### MVP First (User Story 1 Only)
++
++1. Complete Phase 1: Setup
++2. Complete Phase 2: Foundational (model + seed + router wiring)
++3. Complete Phase 3: US1 (apply valid code)
++4. **STOP and VALIDATE**: `pytest tests/test_discounts.py -k "save5 or save10 or save20 or second_code"` — all pass
++
++### Incremental Delivery
++
++1. Setup + Foundational → Data model ready
++2. US1 → Apply discount works → Demo: SAVE10 reduces a $10 order to $9
++3. US2 → Error paths covered → Reject typos and unauthorized requests
++4. US3 → Remove discount → Full round-trip working
++5. Polish → Full suite green, no regressions
++
++---
++
++## Notes
++
++- [P] tasks = different files or independent functions, no blocking dependencies
++- [Story] label maps each task to a specific user story for traceability
++- Tests MUST fail before implementation (TDD gate enforced at each story checkpoint)
++- Integer cents throughout — never float arithmetic on `total` or `discount_amount_cents`
++- `discount_code` in `OrderOut` resolves to the code string via ORM relationship, not the FK integer
++- Seed codes are idempotent — safe to restart server without duplicating rows
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..e9dd57d 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -2,14 +2,23 @@ from contextlib import asynccontextmanager
+ 
+ from fastapi import FastAPI
+ 
+-from api.deps import engine
+-from api.models import Base
++from api.deps import SessionLocal, engine
++from api.models import Base, DiscountCode
+ from api.routes import orders, users
++from api.routes import discounts
+ 
+ 
+ @asynccontextmanager
+ async def lifespan(_: FastAPI):
+     Base.metadata.create_all(bind=engine)
++    db = SessionLocal()
++    try:
++        for code_str, pct in [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]:
++            if not db.query(DiscountCode).filter_by(code=code_str).first():
++                db.add(DiscountCode(code=code_str, discount_percent=pct))
++        db.commit()
++    finally:
++        db.close()
+     yield
+ 
+ 
+@@ -17,6 +26,7 @@ app = FastAPI(title="benchmark-target", lifespan=lifespan)
+ 
+ app.include_router(users.router)
+ app.include_router(orders.router)
++app.include_router(discounts.router)
+ 
+ 
+ @app.get("/health")
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..a06db5f 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -8,6 +8,19 @@ class Base(DeclarativeBase):
+     pass
+ 
+ 
++class DiscountCode(Base):
++    __tablename__ = "discount_codes"
++
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
++    discount_percent: Mapped[int] = mapped_column(Integer, nullable=False)
++    created_at: Mapped[datetime] = mapped_column(
++        DateTime, default=datetime.utcnow, nullable=False
++    )
++
++    orders: Mapped[list["Order"]] = relationship(back_populates="discount_code")
++
++
+ class User(Base):
+     __tablename__ = "users"
+ 
+@@ -31,11 +44,16 @@ class Order(Base):
+     created_at: Mapped[datetime] = mapped_column(
+         DateTime, default=datetime.utcnow, nullable=False
+     )
++    discount_code_id: Mapped[int | None] = mapped_column(
++        ForeignKey("discount_codes.id"), nullable=True, default=None
++    )
++    discount_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+ 
+     user: Mapped[User] = relationship(back_populates="orders")
+     items: Mapped[list["OrderItem"]] = relationship(
+         back_populates="order", cascade="all, delete-orphan"
+     )
++    discount_code: Mapped[DiscountCode | None] = relationship(back_populates="orders")
+ 
+ 
+ class OrderItem(Base):
+diff --git a/target/src/api/routes/discounts.py b/target/src/api/routes/discounts.py
+new file mode 100644
+index 0000000..d6e2704
+--- /dev/null
++++ b/target/src/api/routes/discounts.py
+@@ -0,0 +1,83 @@
++from fastapi import APIRouter, Depends, HTTPException
++from pydantic import BaseModel
++from sqlalchemy.orm import Session
++
++from api.deps import get_current_user, get_db
++from api.models import DiscountCode, Order, User
++from api.routes.orders import OrderItemOut, OrderOut
++
++router = APIRouter(prefix="/orders", tags=["discounts"])
++
++
++class DiscountCodeApply(BaseModel):
++    code: str
++
++
++def _to_order_out(order: Order) -> OrderOut:
++    return OrderOut(
++        id=order.id,
++        user_id=order.user_id,
++        total=order.total,
++        discount_code=order.discount_code.code if order.discount_code else None,
++        discount_amount_cents=order.discount_amount_cents,
++        created_at=order.created_at.strftime("%Y-%d-%m"),
++        items=[
++            OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
++            for i in order.items
++        ],
++    )
++
++
++@router.post("/{order_id}/discount-code", response_model=OrderOut)
++def apply_discount_code(
++    order_id: int,
++    payload: DiscountCodeApply,
++    db: Session = Depends(get_db),
++    user: User = Depends(get_current_user),
++) -> OrderOut:
++    order = db.get(Order, order_id)
++    if order is None:
++        raise HTTPException(status_code=404, detail="order not found")
++    if order.user_id != user.id:
++        raise HTTPException(status_code=403, detail="forbidden")
++
++    discount = db.query(DiscountCode).filter_by(code=payload.code.upper()).first()
++    if discount is None:
++        raise HTTPException(status_code=422, detail="invalid discount code")
++
++    if order.discount_code_id is not None:
++        order.total += order.discount_amount_cents
++
++    discount_amount = round(order.total * discount.discount_percent / 100)
++    order.total = max(0, order.total - discount_amount)
++    order.discount_code_id = discount.id
++    order.discount_amount_cents = discount_amount
++
++    db.commit()
++    db.refresh(order)
++
++    return _to_order_out(order)
++
++
++@router.delete("/{order_id}/discount-code", response_model=OrderOut)
++def remove_discount_code(
++    order_id: int,
++    db: Session = Depends(get_db),
++    user: User = Depends(get_current_user),
++) -> OrderOut:
++    order = db.get(Order, order_id)
++    if order is None:
++        raise HTTPException(status_code=404, detail="order not found")
++    if order.user_id != user.id:
++        raise HTTPException(status_code=403, detail="forbidden")
++    if order.discount_code_id is None:
++        raise HTTPException(status_code=400, detail="no discount code applied")
++
++    order.total += order.discount_amount_cents
++    order.discount_code_id = None
++    order.discount_amount_cents = 0
++
++    db.commit()
++    db.refresh(order)
++
++    return _to_order_out(order)
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..8ecce1c 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -37,6 +37,8 @@ class OrderOut(BaseModel):
+     id: int
+     user_id: int
+     total: int
++    discount_code: str | None = None
++    discount_amount_cents: int = 0
+     created_at: str
+     items: list[OrderItemOut]
+ 
+diff --git a/target/tests/test_discounts.py b/target/tests/test_discounts.py
+new file mode 100644
+index 0000000..a3ebd7d
+--- /dev/null
++++ b/target/tests/test_discounts.py
+@@ -0,0 +1,180 @@
++import pytest
++from api.models import DiscountCode
++
++
++def _make_user(client, email="u@example.com", name="U"):
++    resp = client.post("/users", json={"email": email, "name": name})
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def _make_order(client, user_id, unit_price=10.0, quantity=1, sku="ITEM"):
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user_id)},
++        json={"items": [{"sku": sku, "quantity": quantity, "unit_price": unit_price}]},
++    )
++    assert resp.status_code == 201
++    return resp.json()
++
++
++@pytest.fixture(autouse=True)
++def discount_codes(db_engine):
++    from sqlalchemy.orm import sessionmaker
++    Session = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)
++    db = Session()
++    for code, pct in [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]:
++        db.add(DiscountCode(code=code, discount_percent=pct))
++    db.commit()
++    db.close()
++
++
++# ---------------------------------------------------------------------------
++# US1: Apply valid discount code
++# ---------------------------------------------------------------------------
++
++def test_apply_save5_reduces_total_by_5_percent(client):
++    user = _make_user(client, email="a@example.com")
++    order = _make_order(client, user["id"], unit_price=10.0)  # 1000 cents
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE5"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 950
++    assert body["discount_amount_cents"] == 50
++    assert body["discount_code"] == "SAVE5"
++
++
++def test_apply_save10_reduces_total_by_10_percent(client):
++    user = _make_user(client, email="b@example.com")
++    order = _make_order(client, user["id"], unit_price=10.0)  # 1000 cents
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 900
++    assert body["discount_amount_cents"] == 100
++    assert body["discount_code"] == "SAVE10"
++
++
++def test_apply_save20_reduces_total_by_20_percent(client):
++    user = _make_user(client, email="c@example.com")
++    order = _make_order(client, user["id"], unit_price=10.0)  # 1000 cents
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE20"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 800
++    assert body["discount_amount_cents"] == 200
++    assert body["discount_code"] == "SAVE20"
++
++
++def test_apply_second_code_replaces_first_and_recalculates(client):
++    user = _make_user(client, email="d@example.com")
++    order = _make_order(client, user["id"], unit_price=10.0)  # 1000 cents
++    client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE20"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 800
++    assert body["discount_amount_cents"] == 200
++    assert body["discount_code"] == "SAVE20"
++
++
++# ---------------------------------------------------------------------------
++# US2: Reject invalid discount code
++# ---------------------------------------------------------------------------
++
++def test_apply_unrecognized_code_returns_422(client):
++    user = _make_user(client, email="e@example.com")
++    order = _make_order(client, user["id"])
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "FAKE99"},
++    )
++    assert resp.status_code == 422
++    assert resp.json()["detail"] == "invalid discount code"
++
++
++def test_apply_without_auth_header_returns_401(client):
++    user = _make_user(client, email="f@example.com")
++    order = _make_order(client, user["id"])
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 401
++
++
++def test_apply_to_other_users_order_returns_403(client):
++    owner = _make_user(client, email="g@example.com")
++    other = _make_user(client, email="h@example.com")
++    order = _make_order(client, owner["id"])
++    resp = client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(other["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 403
++
++
++def test_apply_to_nonexistent_order_returns_404(client):
++    user = _make_user(client, email="i@example.com")
++    resp = client.post(
++        "/orders/99999/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 404
++
++
++# ---------------------------------------------------------------------------
++# US3: Remove applied discount code
++# ---------------------------------------------------------------------------
++
++def test_remove_applied_code_restores_original_total(client):
++    user = _make_user(client, email="j@example.com")
++    order = _make_order(client, user["id"], unit_price=10.0)  # 1000 cents
++    client.post(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    resp = client.delete(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 1000
++    assert body["discount_code"] is None
++    assert body["discount_amount_cents"] == 0
++
++
++def test_remove_when_no_code_applied_returns_400(client):
++    user = _make_user(client, email="k@example.com")
++    order = _make_order(client, user["id"])
++    resp = client.delete(
++        f"/orders/{order['id']}/discount-code",
++        headers={"X-User-Id": str(user["id"])},
++    )
++    assert resp.status_code == 400
++    assert resp.json()["detail"] == "no discount code applied"

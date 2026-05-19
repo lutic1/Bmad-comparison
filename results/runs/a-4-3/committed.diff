@@ -1,0 +1,236 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..62ae3e8 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -28,6 +28,7 @@ class Order(Base):
+     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+     # Stored as integer cents. See _to_cents in routes/orders.py.
+     total: Mapped[int] = mapped_column(Integer, nullable=False)
++    discount_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+     created_at: Mapped[datetime] = mapped_column(
+         DateTime, default=datetime.utcnow, nullable=False
+     )
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..38f2ad2 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -14,6 +14,9 @@ def _to_cents(dollars: float) -> int:
+     return int(round(dollars * 100))
+ 
+ 
++DISCOUNT_CODES: dict[str, int] = {"SAVE5": 5, "SAVE10": 10, "SAVE20": 20}
++
++
+ class OrderItemIn(BaseModel):
+     sku: str
+     quantity: int
+@@ -22,6 +25,7 @@ class OrderItemIn(BaseModel):
+ 
+ class OrderCreate(BaseModel):
+     items: list[OrderItemIn]
++    discount_code: str | None = None
+ 
+ 
+ class OrderItemOut(BaseModel):
+@@ -37,6 +41,7 @@ class OrderOut(BaseModel):
+     id: int
+     user_id: int
+     total: int
++    discount_code: str | None
+     created_at: str
+     items: list[OrderItemOut]
+ 
+@@ -50,6 +55,9 @@ def create_order(
+     if not payload.items:
+         raise HTTPException(status_code=400, detail="order must have at least one item")
+ 
++    if payload.discount_code is not None and payload.discount_code not in DISCOUNT_CODES:
++        raise HTTPException(status_code=400, detail="invalid discount code")
++
+     order = Order(user_id=user.id, total=0)
+     db.add(order)
+     db.flush()
+@@ -66,7 +74,13 @@ def create_order(
+         db.add(line)
+         total += unit_price_cents * item.quantity
+ 
++    if payload.discount_code is not None:
++        pct = DISCOUNT_CODES[payload.discount_code]
++        discount_amount = int(round(total * pct / 100))
++        total = total - discount_amount
++
+     order.total = total
++    order.discount_code = payload.discount_code
+     db.commit()
+     db.refresh(order)
+ 
+@@ -74,6 +88,7 @@ def create_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
++        discount_code=order.discount_code,
+         created_at=order.created_at.strftime("%Y-%d-%m"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+@@ -98,6 +113,7 @@ def get_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
++        discount_code=order.discount_code,
+         created_at=order.created_at.strftime("%Y-%d-%m"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+diff --git a/target/tests/test_orders.py b/target/tests/test_orders.py
+index afc76b3..c540f8f 100644
+--- a/target/tests/test_orders.py
++++ b/target/tests/test_orders.py
+@@ -62,3 +62,94 @@ def test_get_order_returns_owner(client):
+     )
+     assert resp.status_code == 200
+     assert resp.json()["id"] == created["id"]
++
++
++def test_create_order_no_discount_code(client):
++    user = _make_user(client, email="nocode@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "A", "quantity": 2, "unit_price": 9.99}]},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 1998
++    assert body["discount_code"] is None
++
++
++def test_create_order_discount_save5(client):
++    user = _make_user(client, email="save5@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 2, "unit_price": 9.99}],
++            "discount_code": "SAVE5",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["discount_code"] == "SAVE5"
++    assert body["total"] == 1898
++
++
++def test_create_order_discount_save10(client):
++    user = _make_user(client, email="save10@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 2, "unit_price": 9.99}],
++            "discount_code": "SAVE10",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["discount_code"] == "SAVE10"
++    assert body["total"] == 1798
++
++
++def test_create_order_discount_save20(client):
++    user = _make_user(client, email="save20@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 2, "unit_price": 9.99}],
++            "discount_code": "SAVE20",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["discount_code"] == "SAVE20"
++    assert body["total"] == 1598
++
++
++def test_create_order_invalid_discount_code(client):
++    user = _make_user(client, email="bad@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 5.00}],
++            "discount_code": "FAKE99",
++        },
++    )
++    assert resp.status_code == 400
++
++
++def test_get_order_returns_discount_code(client):
++    user = _make_user(client, email="getcode@example.com")
++    created = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "SAVE10",
++        },
++    ).json()
++    resp = client.get(
++        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert resp.status_code == 200
++    assert resp.json()["discount_code"] == "SAVE10"
