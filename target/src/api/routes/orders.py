@@ -9,6 +9,12 @@ from api.models import Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
+DISCOUNT_CODES: dict[str, int] = {
+    "SAVE5": 5,
+    "SAVE10": 10,
+    "SAVE20": 20,
+}
+
 
 def _to_cents(dollars: float) -> int:
     return int(round(dollars * 100))
@@ -33,10 +39,16 @@ class OrderItemOut(BaseModel):
         from_attributes = True
 
 
+class DiscountIn(BaseModel):
+    code: str
+
+
 class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    subtotal: int | None = None
+    discount_code: str | None = None
     created_at: str
     items: list[OrderItemOut]
 
@@ -74,6 +86,8 @@ def create_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        subtotal=order.subtotal,
+        discount_code=order.discount_code,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
@@ -98,6 +112,50 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        subtotal=order.subtotal,
+        discount_code=order.discount_code,
+        created_at=order.created_at.strftime("%Y-%d-%m"),
+        items=[
+            OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+            for i in order.items
+        ],
+    )
+
+
+@router.post("/{order_id}/discount", response_model=OrderOut)
+def apply_discount(
+    order_id: int,
+    payload: DiscountIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> OrderOut:
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.user_id != user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    code = (payload.code or "").strip().upper()
+    if not code or code not in DISCOUNT_CODES:
+        raise HTTPException(status_code=400, detail="invalid discount code")
+
+    if order.subtotal is None:
+        order.subtotal = order.total
+
+    percentage = DISCOUNT_CODES[code]
+    discount_cents = (order.subtotal * percentage + 50) // 100
+    order.total = order.subtotal - discount_cents
+    order.discount_code = code
+
+    db.commit()
+    db.refresh(order)
+
+    return OrderOut(
+        id=order.id,
+        user_id=order.user_id,
+        total=order.total,
+        subtotal=order.subtotal,
+        discount_code=order.discount_code,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)

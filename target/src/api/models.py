@@ -28,6 +28,8 @@ class Order(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Stored as integer cents. See _to_cents in routes/orders.py.
     total: Mapped[int] = mapped_column(Integer, nullable=False)
+    subtotal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discount_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
