@@ -1,3 +1,8 @@
+from datetime import datetime, timedelta
+
+from api.models import Order
+
+
 def _make_user(client, email="u@example.com", name="U"):
     resp = client.post("/users", json={"email": email, "name": name})
     assert resp.status_code == 201
@@ -62,3 +67,69 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def _make_order(client, user_id, sku="SKU", price=1.00):
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user_id)},
+        json={"items": [{"sku": sku, "quantity": 1, "unit_price": price}]},
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_refund_requires_auth(client):
+    user = _make_user(client, email="ra@example.com")
+    order = _make_order(client, user["id"])
+    resp = client.post(f"/orders/{order['id']}/refund")
+    assert resp.status_code == 401
+
+
+def test_refund_order_not_found(client):
+    user = _make_user(client, email="rnf@example.com")
+    resp = client.post("/orders/99999/refund", headers={"X-User-Id": str(user["id"])})
+    assert resp.status_code == 404
+
+
+def test_refund_forbidden_for_other_user(client):
+    owner = _make_user(client, email="rfo@example.com")
+    other = _make_user(client, email="rfo2@example.com")
+    order = _make_order(client, owner["id"])
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(other["id"])}
+    )
+    assert resp.status_code == 403
+
+
+def test_refund_expired_window(client, db):
+    user = _make_user(client, email="rew@example.com")
+    order = _make_order(client, user["id"])
+    db_order = db.get(Order, order["id"])
+    db_order.created_at = datetime.utcnow() - timedelta(days=31)
+    db.commit()
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 400
+
+
+def test_refund_already_refunded(client):
+    user = _make_user(client, email="rar@example.com")
+    order = _make_order(client, user["id"])
+    headers = {"X-User-Id": str(user["id"])}
+    client.post(f"/orders/{order['id']}/refund", headers=headers)
+    resp = client.post(f"/orders/{order['id']}/refund", headers=headers)
+    assert resp.status_code == 409
+
+
+def test_refund_success(client):
+    user = _make_user(client, email="rs@example.com")
+    order = _make_order(client, user["id"])
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["order_id"] == order["id"]
+    assert "refunded_at" in body
