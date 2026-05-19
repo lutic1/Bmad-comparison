@@ -65,7 +65,7 @@ done
     exit 2
 }
 [[ "$TASK" =~ ^[1-4]$ ]] || { echo "--task must be 1..4" >&2; exit 2; }
-[[ "$RUN" =~ ^[1-3]$ ]] || { echo "--run must be 1..3" >&2; exit 2; }
+[[ "$RUN" =~ ^[1-9]$ ]] || { echo "--run must be 1..9" >&2; exit 2; }
 if [[ "$RECORD" == 1 && ( -z "$SCORE" || -z "$NOTES" ) ]]; then
     echo "--score and --notes required unless --no-record" >&2
     exit 2
