@@ -62,3 +62,76 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_no_discount_code_leaves_total_unchanged(client):
+    user = _make_user(client, email="nodiscount@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}]},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["total"] == 1000
+    assert body["discount_pct"] is None
+
+
+def test_discount_code_save5(client):
+    user = _make_user(client, email="disc5@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}], "discount_code": "SAVE5"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["discount_pct"] == 5
+    assert body["total"] == 950
+
+
+def test_discount_code_save10(client):
+    user = _make_user(client, email="disc10@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}], "discount_code": "SAVE10"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["discount_pct"] == 10
+    assert body["total"] == 900
+
+
+def test_discount_code_save20(client):
+    user = _make_user(client, email="disc20@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}], "discount_code": "SAVE20"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["discount_pct"] == 20
+    assert body["total"] == 800
+
+
+def test_discount_code_case_insensitive(client):
+    user = _make_user(client, email="disccase@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}], "discount_code": "save10"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["discount_pct"] == 10
+
+
+def test_invalid_discount_code_returns_400(client):
+    user = _make_user(client, email="badisc@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}], "discount_code": "BOGUS"},
+    )
+    assert resp.status_code == 400
