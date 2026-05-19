@@ -23,13 +23,14 @@ in a single hermetic session via `--resume`.
 
 1. **The most-cited Plan Mode failure was a Sonnet ceiling, not a
    workflow flaw.** On the refund-endpoint task, Sonnet+Plan Mode
-   missed the explicit `amount_cents` acceptance criterion in **all 3**
-   runs (RefundOut shipped without the amount field). On Opus, the
-   same workflow caught it in **all 3** reruns. The original article
+   missed the explicit `amount_cents` acceptance criterion in **3 of
+   3** runs (RefundOut shipped without the amount field). On Opus, the
+   same workflow caught it in **10 of 10** runs (n=10 deliberately
+   targeted at this cell to firm up the headline). The original article
    framing — "Plan Mode is structurally bad at well-specified medium
    tasks" — doesn't survive the model swap. The honest framing is
    "Sonnet+Plan Mode misses spec-detail audit fields that Opus+Plan
-   Mode catches."
+   Mode catches reliably."
 
 2. **Spec Kit's specify phase has model-independent variance on the
    same failure mode.** Spec Kit caught the same `amount_cents` field
@@ -52,17 +53,18 @@ in a single hermetic session via `--resume`.
 
 The article's most honest cost framing isn't "BMAD wins on quality,
 Plan Mode wins on cost." With n=3 per A task on Opus (12 cells total),
-**A-Opus and C-Sonnet are essentially tied on quality (4.75 vs 4.83)
-at comparable cost ($28.95 vs $32.05 across 12 cells each)** — the
-ratio is ~10% lower for Opus+Plan Mode, not 5× as an A2-only read
-would suggest. Model choice is the lever the original benchmark held
+**A-Opus and C-Sonnet are essentially tied on quality (4.84 vs 4.83,
+A-Opus n=19 with the A2 sample at n=10) at comparable cost** ($42.66
+across 19 A-Opus cells, $32.05 across 12 C-Sonnet cells; per-cell
+$2.24 vs $2.67 — Opus+Plan Mode is ~16% cheaper per cell). Not 5×
+as an A2-only read would suggest. Model choice is the lever the original benchmark held
 constant; once you allow it, "BMAD wins on quality" stops being the
 right summary. The actual options on the cost-quality frontier:
 
 | if your budget per cell is… | pick |
 |---|---|
 | $0.50 | A-Sonnet (mean 4.17, lives with A2 amount miss) |
-| $2–3 | **A-Opus (mean 4.75) ≈ C-Sonnet (mean 4.83)** — tossup |
+| $2–3 | **A-Opus (mean 4.84, n=19) ≈ C-Sonnet (mean 4.83, n=12)** — A-Opus is ~16% cheaper per cell |
 | $5+ for a flagship single artifact | C-Opus on task 4 — cleanest impl in the benchmark |
 
 ## Headline numbers
@@ -277,7 +279,7 @@ data intact. Total Opus spend: $24.04 across 7 cells.
 
 | cell | Sonnet | Opus | what changed |
 |------|--------|------|--------------|
-| **A2** (3 runs) | 3, 3, 3 — missed `amount_cents` | **5, 5, 5 — caught it** | **Pure model-capability gap.** Opus 3/3, Sonnet 0/3. The headline Plan Mode failure was Sonnet-specific. |
+| **A2** (Sonnet 3, Opus 10) | 3, 3, 3 — missed `amount_cents` | **10/10 — caught it** | **Pure model-capability gap.** Opus 10/10 (n=10 deliberately commissioned to firm up the headline; $18.94 for the extension), Sonnet 0/3. The headline Plan Mode failure was Sonnet-specific and the rate is now nearly unassailable. |
 | **B2-r2 → r5** | 3 — missed amount | 3 — also missed | Spec Kit's specify-phase variance is workflow-shape, not model-capability. |
 | **B2-r3 → r6** | 3 — missed amount | 5 — caught it | Same Spec Kit cell, different outcome — variance persists on Opus (1/2 catch, vs Sonnet's 1/3). |
 | **B4-r1 → r4** | 3 — stored total wrong | 5 — used `(subtotal × pct + 50) // 100`, stored discounted value | Partly model-capability — Opus reasoned through the cents-rounding constraint properly. |
@@ -319,18 +321,20 @@ biggest on the smallest cells (A2 ~3×) and smallest on the most-verbose
 ones (C4 ~1.3×). If you only need Opus for the spec-detail-audit step,
 the cost premium is manageable.
 
-### Combined picture (firmed up with n=3 per A task on Opus)
+### Combined picture (firmed up with n=3 per A task on Opus, plus n=10 on A2)
 
-After commissioning the 9 additional A-Opus runs (A1, A3, A4 each ×3),
-we have **full n=3 parity** between A-Sonnet and A-Opus across all 4
-tasks. Grand total across Sonnet + Opus: **$116.37 for 52 cells**.
+After commissioning 9 additional A-Opus runs (A1, A3, A4 each ×3) and
+7 extra A2-Opus runs (bringing A2-Opus to n=10), we have **full n=3
+parity** between A-Sonnet and A-Opus across all 4 tasks, plus
+**n=10 on the headline A2 cell**. Grand total across Sonnet + Opus:
+**$130.08 for 59 cells**.
 
-Per-task A comparison (n=3 each):
+Per-task A comparison (n=3 each, except A2 which is n=3 vs n=10):
 
 | task | A-Sonnet mean$ | A-Sonnet score | A-Opus mean$ | A-Opus score | Δ$ | Δ score |
 |------|---------------:|---------------:|-------------:|-------------:|---:|--------:|
 | 1 | 0.30 | 5.00 | 1.10 | 5.00 | +3.7× | flat |
-| 2 | 0.59 | **3.00** | 1.73 | **5.00** | +2.9× | **+2.0** |
+| 2 (n=3 vs n=10) | 0.59 | **3.00** | 1.89 | **5.00** | +3.2× | **+2.0** |
 | 3 | 0.59 | 4.33 | 3.67 | 5.00 | +6.2× | +0.67 |
 | 4 | 0.74 | 4.33 | 3.15 | 4.00 | +4.3× | **−0.33** |
 
@@ -339,27 +343,28 @@ A-workflow rollup (all 12 cells per model):
 | | n | mean score | total cost |
 |---|---|-----------|-----------|
 | A-Sonnet | 12 | 4.17 | $6.66 |
-| **A-Opus** | **12** | **4.75** | **$28.95** |
+| **A-Opus** | **19** | **4.84** | **$42.66** |
 | B-Sonnet | 12 | 4.08 | $29.85 |
 | B-Opus | 3 | 4.33 | $13.64 |
 | C-Sonnet | 12 | 4.83 | $32.05 |
 | C-Opus | 1 | 5.00 | $5.22 |
 
-**A-Opus (mean 4.75) is essentially tied with C-Sonnet (mean 4.83) at
-slightly lower cost ($28.95 vs $32.05).** Earlier reads of this same
-comparison citing "5× cheaper" were based on A2-only ($1.73 vs $2.64,
-a 1.5× ratio) — the A2-only number is real but extending Opus across
-all four A tasks brings the rollup ratio down to ~10% cheaper. The
-A3-Opus runs in particular ($3.67 mean) cost more than originally
-expected because Opus produces noticeably more elaborate plans on
-the ambiguous task.
+**A-Opus (mean 4.84, n=19) is essentially tied with C-Sonnet (mean
+4.83, n=12) at lower per-cell cost** ($42.66 / 19 = $2.24/cell vs
+$32.05 / 12 = $2.67/cell — Opus+Plan Mode is ~16% cheaper). Earlier
+reads of this same comparison citing "5× cheaper" were based on
+A2-only ($1.89 vs $2.64, a 1.4× ratio) — the A2-only number is real
+but extending Opus across all four A tasks brings the rollup ratio
+down to ~16% cheaper. The A3-Opus runs in particular ($3.67 mean)
+cost more than originally expected because Opus produces noticeably
+more elaborate plans on the ambiguous task.
 
 The honest cost-per-quality framing, with this larger n:
 
 - **Cheapest viable quality:** A-Sonnet at $0.55/cell mean 4.17. Lives
   with the A2 amount-field miss; otherwise indistinguishable from
   more expensive options on simple/clear tasks.
-- **Best cost-per-quality:** A-Opus at $2.41/cell mean 4.75. Catches
+- **Best cost-per-quality:** A-Opus at $2.24/cell mean 4.84 (n=19). Catches
   the A2 miss reliably. Comparable to C-Sonnet quality at ~10% lower
   cost.
 - **Highest absolute quality (single cell):** C-Opus on task 4
@@ -385,18 +390,16 @@ The cheapest experiments that could break each headline finding,
 ordered by cost. Pre-registering these is the epistemic move I owe
 the reader before they decide whether to act on the report.
 
-### Finding 1 — "Opus catches A2 3/3, Sonnet misses 3/3"
+### Finding 1 — "Opus catches A2 10/10, Sonnet misses 3/3"
 
-- **Cheapest break:** n=10 on A2-Opus. The current 3/3 is consistent
-  but thin — the underlying rate could be anywhere from ~70% to 100%
-  with three samples. Add seven more Opus runs of A2 (~$15 at current
-  Opus cost) and the confidence interval tightens substantially. If
-  the rate drops below ~80%, the "model swap fixes Plan Mode"
-  framing weakens to "model swap helps Plan Mode probabilistically."
-- **Cheaper still:** n=10 on A2-Sonnet. The current 0/3 might be
-  coincidence even if rare; seven more Sonnet runs (~$5) at a 0/10
-  rate would settle whether the failure is a true Sonnet structural
-  limit or just bad luck.
+- ~~Cheapest break: n=10 on A2-Opus~~ **DONE.** 10/10 Opus runs of A2
+  caught the amount field (cost $1.89/cell, $18.94 total for the
+  rebuttal extension). The original 3/3 was not an artifact.
+- **Cheapest remaining break:** n=10 on A2-Sonnet. The current 0/3
+  might be coincidence even if rare; seven more Sonnet runs (~$5)
+  at a 0/10 rate would settle whether the failure is a true Sonnet
+  structural limit or just bad luck. The asymmetry of the current
+  n's (3 Sonnet vs 10 Opus) is the next-cheapest credibility win.
 - **What would refute it entirely:** any single A2-Sonnet run that
   ships the `amount` field. Would re-open the "Plan Mode is
   inconsistent on this task" interpretation instead of "Plan Mode
@@ -469,7 +472,7 @@ the reader before they decide whether to act on the report.
    then ~$5 in cell reruns on Plan-Mode-Sonnet).
 
 Total to get to a defensible n: roughly **$65 extra plus one second
-rater's afternoon**, on top of the $92.60 already spent. Each of the
+rater's afternoon**, on top of the $130.08 already spent. Each of the
 four would meaningfully change my confidence in the corresponding
 headline; none of them are strictly necessary to publish, but the
 first one is the cheapest credibility-per-dollar item in the whole
