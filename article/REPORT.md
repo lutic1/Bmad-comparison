@@ -51,10 +51,19 @@ in a single hermetic session via `--resume`.
    are independently quotable.
 
 The article's most honest cost framing isn't "BMAD wins on quality,
-Plan Mode wins on cost." It's: **if you'll spend Sonnet+BMAD money
-($2.67/cell), you could instead spend Opus+Plan Mode money
-($1.73/cell on A2) and get comparable quality at lower cost.** Model
-choice is the lever the original benchmark held constant.
+Plan Mode wins on cost." With n=3 per A task on Opus (12 cells total),
+**A-Opus and C-Sonnet are essentially tied on quality (4.75 vs 4.83)
+at comparable cost ($28.95 vs $32.05 across 12 cells each)** — the
+ratio is ~10% lower for Opus+Plan Mode, not 5× as an A2-only read
+would suggest. Model choice is the lever the original benchmark held
+constant; once you allow it, "BMAD wins on quality" stops being the
+right summary. The actual options on the cost-quality frontier:
+
+| if your budget per cell is… | pick |
+|---|---|
+| $0.50 | A-Sonnet (mean 4.17, lives with A2 amount miss) |
+| $2–3 | **A-Opus (mean 4.75) ≈ C-Sonnet (mean 4.83)** — tossup |
+| $5+ for a flagship single artifact | C-Opus on task 4 — cleanest impl in the benchmark |
 
 ## Headline numbers
 
@@ -310,24 +319,65 @@ biggest on the smallest cells (A2 ~3×) and smallest on the most-verbose
 ones (C4 ~1.3×). If you only need Opus for the spec-detail-audit step,
 the cost premium is manageable.
 
-### Combined picture
+### Combined picture (firmed up with n=3 per A task on Opus)
 
-Grand total across Sonnet + Opus: **$92.60 for 43 cells**. Final
-mean-score-by-workflow-and-model:
+After commissioning the 9 additional A-Opus runs (A1, A3, A4 each ×3),
+we have **full n=3 parity** between A-Sonnet and A-Opus across all 4
+tasks. Grand total across Sonnet + Opus: **$116.37 for 52 cells**.
+
+Per-task A comparison (n=3 each):
+
+| task | A-Sonnet mean$ | A-Sonnet score | A-Opus mean$ | A-Opus score | Δ$ | Δ score |
+|------|---------------:|---------------:|-------------:|-------------:|---:|--------:|
+| 1 | 0.30 | 5.00 | 1.10 | 5.00 | +3.7× | flat |
+| 2 | 0.59 | **3.00** | 1.73 | **5.00** | +2.9× | **+2.0** |
+| 3 | 0.59 | 4.33 | 3.67 | 5.00 | +6.2× | +0.67 |
+| 4 | 0.74 | 4.33 | 3.15 | 4.00 | +4.3× | **−0.33** |
+
+A-workflow rollup (all 12 cells per model):
 
 | | n | mean score | total cost |
 |---|---|-----------|-----------|
-| A Sonnet | 12 | 4.17 | $6.66 |
-| A Opus | 3 | **5.00** | $5.18 |
-| B Sonnet | 12 | 4.08 | $29.85 |
-| B Opus | 3 | 4.33 | $13.64 |
-| C Sonnet | 12 | 4.83 | $32.05 |
-| C Opus | 1 | 5.00 | $5.22 |
+| A-Sonnet | 12 | 4.17 | $6.66 |
+| **A-Opus** | **12** | **4.75** | **$28.95** |
+| B-Sonnet | 12 | 4.08 | $29.85 |
+| B-Opus | 3 | 4.33 | $13.64 |
+| C-Sonnet | 12 | 4.83 | $32.05 |
+| C-Opus | 1 | 5.00 | $5.22 |
 
-The real story: **A on Opus matches C on Sonnet for ~5× less cost** on
-the cells we tested. The article's most honest framing isn't "BMAD wins
-on quality" — it's "if you want Plan-Mode-level cost, switch to Opus;
-if you want Sonnet-level cost, accept BMAD's ceremony tax for quality."
+**A-Opus (mean 4.75) is essentially tied with C-Sonnet (mean 4.83) at
+slightly lower cost ($28.95 vs $32.05).** Earlier reads of this same
+comparison citing "5× cheaper" were based on A2-only ($1.73 vs $2.64,
+a 1.5× ratio) — the A2-only number is real but extending Opus across
+all four A tasks brings the rollup ratio down to ~10% cheaper. The
+A3-Opus runs in particular ($3.67 mean) cost more than originally
+expected because Opus produces noticeably more elaborate plans on
+the ambiguous task.
+
+The honest cost-per-quality framing, with this larger n:
+
+- **Cheapest viable quality:** A-Sonnet at $0.55/cell mean 4.17. Lives
+  with the A2 amount-field miss; otherwise indistinguishable from
+  more expensive options on simple/clear tasks.
+- **Best cost-per-quality:** A-Opus at $2.41/cell mean 4.75. Catches
+  the A2 miss reliably. Comparable to C-Sonnet quality at ~10% lower
+  cost.
+- **Highest absolute quality (single cell):** C-Opus on task 4
+  (`results/runs/c-4-4/`) at $5.22 — Decimal+ROUND_HALF_UP and 36
+  tests, the cleanest implementation in the whole 52-cell run.
+- **Most reliable workflow:** C-Sonnet at $2.67/cell mean 4.83. The
+  ceremony tax buys you 9 of 12 perfect 5/5 cells and the lowest
+  variance of any (workflow, model) combo measured.
+
+Surprise that survived: **A4-Opus actually scored 4.00 (3/3 = 4)**,
+slightly worse than A4-Sonnet's 4.33 mean (one 5, two 4s). All three
+A4-Opus runs used the same module-level `DISCOUNT_CODES` magic dict
+inside `routes/orders.py` that drew reviewer comments on A4-Sonnet
+runs 2 and 3 — the model swap didn't fix this design call. So
+"Opus is uniformly better on workflow A" is not quite right: it's
+"better on tasks 2 and 3, equal on task 1, marginally worse on
+task 4." A4's design-choice failure is a workflow-Plan-Mode pattern,
+not a model-capability issue.
 
 ## What would invalidate this
 
