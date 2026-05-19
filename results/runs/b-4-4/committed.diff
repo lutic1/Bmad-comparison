@@ -1,0 +1,1440 @@
+diff --git a/target/.specify/feature.json b/target/.specify/feature.json
+new file mode 100644
+index 0000000..e28b678
+--- /dev/null
++++ b/target/.specify/feature.json
+@@ -0,0 +1,3 @@
++{
++  "feature_directory": "specs/001-discount-codes"
++}
+diff --git a/target/.specify/memory/constitution.md b/target/.specify/memory/constitution.md
+index a4670ff..5575e82 100644
+--- a/target/.specify/memory/constitution.md
++++ b/target/.specify/memory/constitution.md
+@@ -1,50 +1,27 @@
+-# [PROJECT_NAME] Constitution
+-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+-
+-## Core Principles
+-
+-### [PRINCIPLE_1_NAME]
+-<!-- Example: I. Library-First -->
+-[PRINCIPLE_1_DESCRIPTION]
+-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+-
+-### [PRINCIPLE_2_NAME]
+-<!-- Example: II. CLI Interface -->
+-[PRINCIPLE_2_DESCRIPTION]
+-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+-
+-### [PRINCIPLE_3_NAME]
+-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+-[PRINCIPLE_3_DESCRIPTION]
+-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+-
+-### [PRINCIPLE_4_NAME]
+-<!-- Example: IV. Integration Testing -->
+-[PRINCIPLE_4_DESCRIPTION]
+-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+-
+-### [PRINCIPLE_5_NAME]
+-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+-[PRINCIPLE_5_DESCRIPTION]
+-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+-
+-## [SECTION_2_NAME]
+-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+-
+-[SECTION_2_CONTENT]
+-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+-
+-## [SECTION_3_NAME]
+-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+-
+-[SECTION_3_CONTENT]
+-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+-
+-## Governance
+-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+-
+-[GOVERNANCE_RULES]
+-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+-
+-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
++<!--
++Sync Impact Report
++- Version change: 0.0.0 → 1.0.0 (initial ratification from template)
++- Modified principles: N/A (template placeholders replaced with first concrete content)
++- Added sections: Core constitution body (flat bullet list as supplied verbatim by ratifier)
++- Removed sections: Template placeholder sections (PRINCIPLE_1..5, SECTION_2/3, Governance placeholder)
++- Templates requiring updates:
++  - ✅ .specify/templates/plan-template.md (Constitution Check gate references current file; no rewording needed)
++  - ✅ .specify/templates/spec-template.md (no constitution-derived sections impacted)
++  - ✅ .specify/templates/tasks-template.md (test discipline already aligns with "tests are non-optional")
++- Follow-up TODOs: none
++-->
++
++# Project constitution
++
++- Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest.
++- Idiomatic FastAPI: small route functions, Pydantic models for
++  request and response shapes, dependency injection via Depends.
++- Tests are non-optional. Minimum 80% line coverage on changed files.
++  Every new route ships with happy-path and at least one error-path
++  test.
++- Conventional commits: feat:, fix:, refactor:, test:, docs:, chore:.
++- No new third-party dependencies without a stated justification.
++- Type hints on every public function and route handler.
++- Don't refactor unrelated code in the same change.
++
++**Version**: 1.0.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-19
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+index 7e6443a..ca4a79e 100644
+--- a/target/CLAUDE.md
++++ b/target/CLAUDE.md
+@@ -1,4 +1,53 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
++
+ <!-- SPECKIT START -->
+-For additional context about technologies to be used, project structure,
+-shell commands, and other important information, read the current plan
++Active feature plan: `specs/001-discount-codes/plan.md`
+ <!-- SPECKIT END -->
+diff --git a/target/specs/001-discount-codes/checklists/requirements.md b/target/specs/001-discount-codes/checklists/requirements.md
+new file mode 100644
+index 0000000..26950cf
+--- /dev/null
++++ b/target/specs/001-discount-codes/checklists/requirements.md
+@@ -0,0 +1,35 @@
++# Specification Quality Checklist: Percentage Discount Codes at Checkout
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-05-19
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [x] No implementation details (languages, frameworks, APIs)
++- [x] Focused on user value and business needs
++- [x] Written for non-technical stakeholders
++- [x] All mandatory sections completed
++
++## Requirement Completeness
++
++- [x] No [NEEDS CLARIFICATION] markers remain
++- [x] Requirements are testable and unambiguous
++- [x] Success criteria are measurable
++- [x] Success criteria are technology-agnostic (no implementation details)
++- [x] All acceptance scenarios are defined
++- [x] Edge cases are identified
++- [x] Scope is clearly bounded
++- [x] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [x] All functional requirements have clear acceptance criteria
++- [x] User scenarios cover primary flows
++- [x] Feature meets measurable outcomes defined in Success Criteria
++- [x] No implementation details leak into specification
++
++## Notes
++
++- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
++- Exact code strings deferred to planning by design (documented in Assumptions); not a clarification blocker.
+diff --git a/target/specs/001-discount-codes/contracts/discount-endpoint.md b/target/specs/001-discount-codes/contracts/discount-endpoint.md
+new file mode 100644
+index 0000000..3947da6
+--- /dev/null
++++ b/target/specs/001-discount-codes/contracts/discount-endpoint.md
+@@ -0,0 +1,99 @@
++# Contract: Apply Discount Code to Order
++
++## Endpoint
++
++```
++POST /orders/{order_id}/discount
++```
++
++## Auth
++
++- Requires `X-User-Id` header (existing `get_current_user` dependency).
++- The order at `{order_id}` MUST belong to that user.
++
++## Valid codes
++
++Module-level mapping in `src/api/routes/orders.py`:
++
++```python
++DISCOUNT_CODES: dict[str, int] = {
++    "SAVE5": 5,
++    "SAVE10": 10,
++    "SAVE20": 20,
++}
++```
++
++Lookup is case-insensitive (input is uppercased before lookup).
++
++## Request
++
++Content-Type: `application/json`
++
++```json
++{
++  "code": "SAVE10"
++}
++```
++
++| Field | Type   | Required | Notes                                                    |
++|-------|--------|----------|----------------------------------------------------------|
++| code  | string | yes      | Non-empty. Case-insensitive. Must resolve to a known code. |
++
++## Response — 200 OK
++
++Same shape as the existing `OrderOut` model, with two additional
++optional fields surfaced when a discount is present:
++
++```json
++{
++  "id": 42,
++  "user_id": 7,
++  "subtotal": 10000,
++  "discount_code": "SAVE10",
++  "total": 9000,
++  "created_at": "2026-19-05",
++  "items": [
++    {"sku": "WIDGET", "quantity": 2, "unit_price": 5000}
++  ]
++}
++```
++
++- `subtotal` and `total` are integer cents.
++- `discount_code` is the canonical uppercased code.
++- `created_at` preserves the existing `%Y-%d-%m` format from
++  `routes/orders.py` (unrelated; not changed by this feature).
++
++## Error responses
++
++| Status | Condition                                                        | Body                                              |
++|--------|------------------------------------------------------------------|---------------------------------------------------|
++| 400    | `code` missing, empty, or not a key of `DISCOUNT_CODES`          | `{"detail": "invalid discount code"}`             |
++| 401    | `X-User-Id` header missing or references unknown user             | `{"detail": "missing X-User-Id header"}` / `"unknown user"` (existing) |
++| 403    | Order exists but belongs to a different user                     | `{"detail": "forbidden"}`                         |
++| 404    | No order with the given `order_id`                                | `{"detail": "order not found"}`                   |
++
++## Behaviour
++
++1. Resolve the order; 404 if missing, 403 if not owned by the caller.
++2. Validate `code`; 400 on any failure.
++3. If `order.subtotal IS NULL`, set `order.subtotal = order.total`
++   (snapshot of the pre-discount total).
++4. Compute `discount_cents = (order.subtotal * pct + 50) // 100` and
++   `order.total = order.subtotal - discount_cents`.
++5. Set `order.discount_code = code.upper()`.
++6. Commit and return the updated order.
++
++Repeat calls on the same order replace the discount; step 3 only runs
++the first time (subtotal already snapshotted), so subsequent
++percentages are always computed against the original subtotal.
++
++## Examples
++
++| subtotal_cents | code    | discount_cents | total_cents |
++|----------------|---------|----------------|-------------|
++| 10000          | SAVE5   | 500            | 9500        |
++| 10000          | SAVE10  | 1000           | 9000        |
++| 10000          | SAVE20  | 2000           | 8000        |
++| 5000           | SAVE20  | 1000           | 4000        |
++| 999            | SAVE10  | 100            | 899         |
++| 0              | SAVE10  | 0              | 0           |
+diff --git a/target/specs/001-discount-codes/data-model.md b/target/specs/001-discount-codes/data-model.md
+new file mode 100644
+index 0000000..5c7e93e
+--- /dev/null
++++ b/target/specs/001-discount-codes/data-model.md
+@@ -0,0 +1,64 @@
++# Data Model: Percentage Discount Codes at Checkout
++
++## Changes to existing entities
++
++### `Order` (table `orders`, `src/api/models.py`)
++
++Add two nullable columns. Existing columns unchanged.
++
++| Column          | Type            | Nullable | Default | Notes                                                              |
++|-----------------|-----------------|----------|---------|--------------------------------------------------------------------|
++| `subtotal`      | `Integer`       | yes      | `NULL`  | Pre-discount total in cents. Snapshotted on first discount apply.  |
++| `discount_code` | `String(16)`    | yes      | `NULL`  | Uppercased canonical code (`SAVE5` / `SAVE10` / `SAVE20`).         |
++| `total`         | `Integer`       | no       | —       | **Existing.** Now equals discounted total when a code is applied.  |
++
++**Invariants**:
++
++- If `discount_code IS NOT NULL` then `subtotal IS NOT NULL` and
++  `subtotal >= total >= 0`.
++- If `discount_code IS NULL` then `total` is the order's full subtotal
++  (existing behaviour; `subtotal` may be `NULL` for orders that never
++  had a discount applied).
++- `discount_code`, when present, is always one of the three values
++  defined in `DISCOUNT_CODES` (see contract).
++
++**Validation rules** (enforced at the route layer):
++
++- `code` from the request body MUST be a non-empty string.
++- `code.upper()` MUST be a key of `DISCOUNT_CODES`; otherwise return
++  HTTP 400.
++- Only the owner of the order may apply a code (HTTP 403 otherwise),
++  same rule as `GET /orders/{order_id}`.
++
++**State transitions**:
++
++```text
++(no discount)            ──apply SAVE{n}──▶  (discount applied)
++                                                │
++                                                │ apply SAVE{m}
++                                                ▼
++                                          (discount applied,
++                                           replacing previous)
++```
++
++Order confirmation is implicit in this service (an order is "confirmed"
++the moment it exists). No explicit state column is added.
++
++## New entities
++
++None. The set of valid codes is a fixed in-code constant
++(`DISCOUNT_CODES`), not a database table — see research.md Decision 1.
++
++## Derived values
++
++For an `Order` with `discount_code = code` and `subtotal = s_cents`:
++
++```text
++percentage     = DISCOUNT_CODES[code]                     # 5, 10, or 20
++discount_cents = (s_cents * percentage + 50) // 100       # half-up
++total_cents    = s_cents - discount_cents
++```
++
++When the discount endpoint is called for the first time on an order,
++`subtotal` is initialised from the order's current `total` before the
++new `total` is written.
+diff --git a/target/specs/001-discount-codes/plan.md b/target/specs/001-discount-codes/plan.md
+new file mode 100644
+index 0000000..ad5688b
+--- /dev/null
++++ b/target/specs/001-discount-codes/plan.md
+@@ -0,0 +1,104 @@
++# Implementation Plan: Percentage Discount Codes at Checkout
++
++**Branch**: `001-discount-codes` | **Date**: 2026-05-19 | **Spec**: [spec.md](./spec.md)
++
++**Input**: Feature specification from `/specs/001-discount-codes/spec.md`
++
++## Summary
++
++Add an endpoint that lets the order's owner apply one of three
++percentage discount codes (5%, 10%, 20%) to an existing order, replacing
++any code already applied. The order persists the original subtotal, the
++applied code, and the resulting (discounted) total — all in integer
++cents, consistent with the existing orders schema. Codes are
++case-insensitive and limited to a fixed in-code mapping; no new
++third-party dependencies, no migrations (operator wipes `app.db`).
++
++## Technical Context
++
++**Language/Version**: Python 3.11+
++
++**Primary Dependencies**: FastAPI, SQLAlchemy 2.x (declarative
++`Mapped[...]`), Pydantic v2 — all already in `pyproject.toml`. No new
++third-party dependencies.
++
++**Storage**: SQLite via SQLAlchemy (`sqlite:///./app.db`). Schema is
++created from `Base.metadata` at startup; no migrations.
++
++**Testing**: pytest with the existing `client` fixture in
++`tests/conftest.py` (in-memory SQLite per test, dependency overrides).
++
++**Target Platform**: Linux server (FastAPI ASGI app); local dev via
++uvicorn.
++
++**Project Type**: Single web service (FastAPI). Layout already exists
++under `src/api/`.
++
++**Performance Goals**: N/A beyond existing service expectations.
++Discount application is O(1).
++
++**Constraints**: Money handled exclusively in integer cents to avoid
++binary-float drift (matches existing `Order.total` column). Half-up
++rounding on the cents result.
++
++**Scale/Scope**: Three valid codes, one new endpoint, two new columns
++on `orders`. No usage tracking, no per-user limits, no expiry (out of
++scope per spec Assumptions).
++
++## Constitution Check
++
++*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
++
++Validated against `.specify/memory/constitution.md` v1.0.0:
++
++- **Stack (Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest)** — PASS. No additions; uses what's installed.
++- **Idiomatic FastAPI (small route fns, Pydantic models, `Depends`)** — PASS. New endpoint is a single small handler using `Depends(get_db)` and `Depends(get_current_user)`.
++- **Tests non-optional; ≥80% line coverage on changed files; happy + error path per new route** — PASS. Plan ships happy paths for all three percentages, an invalid-code 400, a 404 for unknown orders, a 403 for non-owners, and the replace-existing-code case. New code is concentrated in one route + a tiny helper, easily covered by these tests.
++- **Conventional commits** — PASS (commit messages controlled at commit time, e.g., `feat: add discount code endpoint`).
++- **No new third-party deps without justification** — PASS. None added.
++- **Type hints on every public function / route handler** — PASS. All new public signatures will be annotated.
++- **Don't refactor unrelated code in the same change** — PASS. Existing order creation, models, and routes remain untouched except for the two additive columns on `Order` and the new route handler. Pre-existing oddities (e.g. the `%Y-%d-%m` date format in `routes/orders.py`) are intentionally left alone.
++
++No violations → Complexity Tracking section omitted.
++
++## Project Structure
++
++### Documentation (this feature)
++
++```text
++specs/001-discount-codes/
++├── plan.md              # This file
++├── research.md          # Phase 0 output
++├── data-model.md        # Phase 1 output
++├── quickstart.md        # Phase 1 output
++├── contracts/           # Phase 1 output
++│   └── discount-endpoint.md
++└── tasks.md             # Phase 2 output (/speckit-tasks)
++```
++
++### Source Code (repository root)
++
++```text
++src/
++└── api/
++    ├── main.py              # unchanged
++    ├── deps.py              # unchanged (reuse get_db, get_current_user)
++    ├── models.py            # +Order.subtotal, +Order.discount_code
++    └── routes/
++        ├── orders.py        # +POST /orders/{order_id}/discount, +OrderOut fields
++        └── users.py         # unchanged
++
++tests/
++├── conftest.py              # unchanged
++├── test_orders.py           # unchanged
++├── test_users.py            # unchanged
++├── test_dates.py            # unchanged
++└── test_discounts.py        # NEW — covers FR-001..FR-009, SC-001..SC-004
++```
++
++**Structure Decision**: Stay with the existing single-project FastAPI
++layout under `src/api/`. New behaviour lives entirely in
++`src/api/routes/orders.py` plus two additive columns in
++`src/api/models.py`. Tests for the feature live in
++`tests/test_discounts.py` so order tests stay focused.
++
+diff --git a/target/specs/001-discount-codes/quickstart.md b/target/specs/001-discount-codes/quickstart.md
+new file mode 100644
+index 0000000..9c8e631
+--- /dev/null
++++ b/target/specs/001-discount-codes/quickstart.md
+@@ -0,0 +1,75 @@
++# Quickstart: Percentage Discount Codes at Checkout
++
++Quick end-to-end demo of the new endpoint against a freshly-wiped
++`app.db`. Assumes the service is run from the repository root.
++
++## 1. Run the service
++
++```bash
++rm -f app.db                  # schema is recreated from Base.metadata at startup
++uvicorn api.main:app --reload
++```
++
++## 2. Create a user
++
++```bash
++curl -s -X POST http://localhost:8000/users \
++  -H 'Content-Type: application/json' \
++  -d '{"email":"demo@example.com","name":"Demo"}'
++# → {"id":1,"email":"demo@example.com","name":"Demo", ...}
++```
++
++## 3. Create an order with a $100.00 subtotal
++
++```bash
++curl -s -X POST http://localhost:8000/orders \
++  -H 'X-User-Id: 1' \
++  -H 'Content-Type: application/json' \
++  -d '{"items":[{"sku":"WIDGET","quantity":2,"unit_price":50.00}]}'
++# → {"id":1,"total":10000, ...}            (cents)
++```
++
++## 4. Apply a 10% discount
++
++```bash
++curl -s -X POST http://localhost:8000/orders/1/discount \
++  -H 'X-User-Id: 1' \
++  -H 'Content-Type: application/json' \
++  -d '{"code":"SAVE10"}'
++# → {"id":1,"subtotal":10000,"discount_code":"SAVE10","total":9000, ...}
++```
++
++## 5. Replace it with 20%
++
++```bash
++curl -s -X POST http://localhost:8000/orders/1/discount \
++  -H 'X-User-Id: 1' \
++  -H 'Content-Type: application/json' \
++  -d '{"code":"save20"}'   # case-insensitive
++# → {"id":1,"subtotal":10000,"discount_code":"SAVE20","total":8000, ...}
++```
++
++Note that `total` is 8000 (20% off the original 10000), **not** 7200
++(20% off the already-discounted 9000). This is the US3 / SC-003
++guarantee.
++
++## 6. Reject an invalid code
++
++```bash
++curl -s -X POST http://localhost:8000/orders/1/discount \
++  -H 'X-User-Id: 1' \
++  -H 'Content-Type: application/json' \
++  -d '{"code":"NOPE"}'
++# → 400 {"detail":"invalid discount code"}
++```
++
++The order's `total` is unchanged (still 8000).
++
++## 7. Run the tests
++
++```bash
++pytest tests/test_discounts.py -q
++```
++
++All scenarios from spec.md (FR-001..FR-009, SC-001..SC-004) are
++covered there.
+diff --git a/target/specs/001-discount-codes/research.md b/target/specs/001-discount-codes/research.md
+new file mode 100644
+index 0000000..f17f874
+--- /dev/null
++++ b/target/specs/001-discount-codes/research.md
+@@ -0,0 +1,102 @@
++# Phase 0 Research: Percentage Discount Codes at Checkout
++
++The Technical Context in `plan.md` has no `NEEDS CLARIFICATION` markers
++— the existing stack (Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic
++v2, pytest, SQLite) fully constrains the technology choices, and the
++spec's Assumptions section closes the remaining product-level
++ambiguities. This document records the few small design decisions made
++within those constraints so reviewers can see the alternatives that
++were considered.
++
++## Decision 1 — Exact code strings
++
++- **Decision**: `SAVE5` → 5%, `SAVE10` → 10%, `SAVE20` → 20%. Stored as
++  a module-level constant `DISCOUNT_CODES: dict[str, int]` in
++  `src/api/routes/orders.py`. Lookup is case-insensitive (`.upper()`
++  before lookup).
++- **Rationale**: The spec deferred exact strings to planning (see
++  Assumptions). `SAVE{n}` is the dominant industry convention,
++  immediately understandable in tests, and avoids the work of designing
++  a code-issuance system that v1 is explicitly out of scope for.
++- **Alternatives considered**:
++  - Random opaque codes (e.g., `7K3-XQ`): better for anti-abuse, but no
++    issuance/distribution flow exists yet — wasted effort for v1.
++  - Configuration via env var / DB table: future-proof but violates the
++    constitution's "no abstractions for a single call site" — three
++    fixed codes don't justify a new table or settings module.
++
++## Decision 2 — Where the discount is applied in the order lifecycle
++
++- **Decision**: Add `POST /orders/{order_id}/discount` accepting a JSON
++  body `{"code": "SAVE10"}`. The order is created first via the
++  existing `POST /orders`; the discount endpoint mutates `subtotal`
++  (set on first call from the existing `total`), `discount_code`, and
++  `total` on that same order.
++- **Rationale**: The existing service has no pending/confirmed split —
++  an order is created in one POST. Putting the discount on a separate
++  endpoint:
++  - directly supports US3 (replace a previously applied code) without
++    inventing a "cart" abstraction;
++  - keeps the existing `POST /orders` unchanged, honouring the
++    constitution's "don't refactor unrelated code in the same change";
++  - reuses `get_current_user` and the existing 403/404 patterns from
++    `GET /orders/{order_id}`.
++- **Alternatives considered**:
++  - Accept `discount_code` on `POST /orders` only: simpler, but
++    can't satisfy US3 (replace) without a separate endpoint anyway.
++  - New "cart"/"checkout" entity: large refactor disallowed by scope;
++    spec explicitly limits scope to discount application.
++
++## Decision 3 — Money representation and rounding
++
++- **Decision**: Compute the discount in integer cents.
++  `discount_cents = (subtotal_cents * percentage + 50) // 100`,
++  `total_cents = subtotal_cents - discount_cents`. The `+ 50 // 100`
++  form is integer half-up rounding for non-negative numerators (always
++  true here: `subtotal_cents >= 0`, `percentage in {5, 10, 20}`).
++- **Rationale**: The `orders.total` column is already integer cents
++  (see `OrderItem.unit_price` and `_to_cents`). Staying in integers
++  removes any IEEE-754 surprises and matches the existing data shape.
++  Half-up matches the spec's edge-case note on rounding.
++- **Alternatives considered**:
++  - `decimal.Decimal`: correct but introduces type-mixing with the
++    existing integer-cents columns for zero practical benefit at this
++    scale.
++  - `round()` on floats: rejected — banker's rounding semantics
++    contradict the spec's "standard half-up rounding".
++
++## Decision 4 — Schema additions on `Order`
++
++- **Decision**: Add two nullable columns to `orders`:
++  - `subtotal: Mapped[int | None]` — set the first time a discount is
++    applied (snapshots the pre-discount cents total); stays `NULL` on
++    orders that never had a discount, to keep existing rows valid.
++  - `discount_code: Mapped[str | None]` — uppercase code string;
++    `NULL` when no discount is in effect.
++- **Rationale**: CLAUDE.md says the operator wipes `app.db` between
++  runs and migrations aren't written — additive nullable columns are
++  the cheapest safe change. Storing `subtotal` separately is necessary
++  to satisfy US3 (the second `apply` must compute off the original
++  subtotal, not the already-discounted total).
++- **Alternatives considered**:
++  - Re-derive subtotal from `OrderItem` rows on each discount call:
++    works, but couples discount logic to item iteration and makes the
++    "snapshot at first apply" semantics implicit.
++  - A separate `order_discounts` table: over-engineered for one active
++    code per order.
++
++## Decision 5 — Test approach
++
++- **Decision**: New file `tests/test_discounts.py` using the existing
++  `client` fixture. Cover: each of the three percentages on a known
++  subtotal (FR-002, FR-003, SC-001), case-insensitive lookup (FR-006),
++  invalid code → 400 (FR-005, SC-002), empty code → 400 (FR-005),
++  replace-existing-code (FR-007, SC-003), order owned by another user
++  → 403, unknown order → 404, subtotal-0 edge case from spec.
++- **Rationale**: Mirrors the structure of `tests/test_orders.py`; one
++  behaviour per test (per CLAUDE.md). FR-009 explicitly requires these.
++- **Alternatives considered**:
++  - Unit-testing a pure discount helper without HTTP: less coverage of
++    the auth/ownership wiring that the constitution's "every new route
++    ships with happy-path and at least one error-path test" cares
++    about. Stick with HTTP-level tests.
+diff --git a/target/specs/001-discount-codes/spec.md b/target/specs/001-discount-codes/spec.md
+new file mode 100644
+index 0000000..77b9a12
+--- /dev/null
++++ b/target/specs/001-discount-codes/spec.md
+@@ -0,0 +1,171 @@
++# Feature Specification: Percentage Discount Codes at Checkout
++
++**Feature Branch**: `001-discount-codes`
++
++**Created**: 2026-05-19
++
++**Status**: Draft
++
++**Input**: User description: "Add a feature where users can apply a percentage discount code at checkout. Discounts can be 5%, 10%, or 20%. Include tests."
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Apply a valid discount code at checkout (Priority: P1)
++
++A shopper has goods in their order and a promotional code shared via email
++or marketing. At checkout they enter the code, and the order total is
++reduced by the corresponding percentage (5%, 10%, or 20%) before they
++confirm the order.
++
++**Why this priority**: This is the core capability the feature exists to
++deliver. Without it, none of the other scenarios are reachable.
++
++**Independent Test**: With an order containing at least one item and a
++known valid code, submitting the code at checkout reduces the displayed
++order total by the correct percentage and the confirmed order reflects
++that discounted total.
++
++**Acceptance Scenarios**:
++
++1. **Given** a checkout with a subtotal of 100.00 and a valid 10% code,
++   **When** the shopper applies the code, **Then** the order total
++   becomes 90.00 and the discount amount (10.00) is shown alongside the
++   subtotal.
++2. **Given** a checkout with a subtotal of 50.00 and a valid 20% code,
++   **When** the shopper applies the code, **Then** the order total
++   becomes 40.00.
++3. **Given** a checkout with a valid 5% code applied, **When** the
++   shopper confirms the order, **Then** the confirmed order persists the
++   discounted total and records which code was used.
++
++---
++
++### User Story 2 - Reject an invalid or unknown discount code (Priority: P2)
++
++A shopper enters a code that does not exist, is misspelled, or is not one
++of the recognized promotional codes. The system must refuse to apply it
++and tell the shopper why, without changing the order total.
++
++**Why this priority**: Without graceful rejection, shoppers either get
++silent failures or unintended discounts. This protects revenue and the
++checkout UX.
++
++**Independent Test**: Entering a code that is not on the recognized list
++returns a clear "invalid code" response and leaves the order total
++unchanged.
++
++**Acceptance Scenarios**:
++
++1. **Given** a checkout with subtotal 100.00, **When** the shopper
++   applies the code `NOPE123`, **Then** the request is rejected with a
++   message indicating the code is invalid and the total remains 100.00.
++2. **Given** a checkout with subtotal 100.00, **When** the shopper
++   applies an empty code, **Then** the request is rejected and the total
++   remains 100.00.
++
++---
++
++### User Story 3 - Replace a previously applied code (Priority: P3)
++
++A shopper applies one valid code, then decides to try a different one
++(e.g., they received a better promo). Applying the second valid code
++replaces the first; only one discount is in effect at a time.
++
++**Why this priority**: Avoids stacking discounts beyond what the
++business has authorized, while still giving shoppers a way to change
++their mind.
++
++**Independent Test**: After applying a 5% code and then a 20% code on
++the same checkout, the order total reflects 20% off the original
++subtotal — not 5% + 20% combined, and not 20% off the already-discounted
++total.
++
++**Acceptance Scenarios**:
++
++1. **Given** a checkout with subtotal 100.00 and a 5% code already
++   applied (total 95.00), **When** the shopper applies a valid 20% code,
++   **Then** the new order total is 80.00 (20% off the original subtotal).
++
++---
++
++### Edge Cases
++
++- Empty order (no items / subtotal of 0): applying any valid code yields
++  a total of 0.00 and is accepted (the discount has no effect but is not
++  an error).
++- Codes are case-insensitive: `save10` and `SAVE10` resolve to the same
++  code.
++- Rounding: the discount is computed on the subtotal in the order's
++  currency unit; the resulting total is rounded to two decimal places
++  using standard half-up rounding.
++- A discount code only affects the order it is applied to; it does not
++  retroactively change previously confirmed orders.
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: The checkout flow MUST accept a discount code submitted by
++  the shopper as part of applying it to a pending order.
++- **FR-002**: The system MUST recognize exactly three valid discount
++  percentages: 5%, 10%, and 20%. Codes mapping to any other percentage
++  MUST be rejected as invalid.
++- **FR-003**: When a valid code is applied, the system MUST compute the
++  discounted total as `subtotal - (subtotal * percentage / 100)`,
++  rounded to two decimal places.
++- **FR-004**: The system MUST return, for any discount application
++  attempt, both the original subtotal and the resulting total (or an
++  explicit error if rejected).
++- **FR-005**: The system MUST reject unknown, empty, or malformed codes
++  with a clear error indicating the code is not valid, and MUST NOT
++  change the order total in those cases.
++- **FR-006**: Discount code lookup MUST be case-insensitive.
++- **FR-007**: At most one discount code MAY be in effect on an order at
++  a time. Applying a new valid code replaces any previously applied code.
++- **FR-008**: When a shopper confirms an order with a discount applied,
++  the confirmed order MUST persist the discounted total and a reference
++  to the code that was used.
++- **FR-009**: The feature MUST ship with automated tests covering at
++  least: each of the three valid percentages, an invalid-code rejection,
++  and the replace-existing-code behavior.
++
++### Key Entities *(include if feature involves data)*
++
++- **Discount Code**: A short, case-insensitive string a shopper enters
++  at checkout. Maps to exactly one of the supported percentages (5%,
++  10%, 20%).
++- **Order (at checkout)**: Has a subtotal derived from its items, an
++  optional applied discount code, and a resulting total. Once confirmed,
++  the discount code and discounted total are recorded on the order.
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: 100% of checkouts that apply one of the three supported
++  codes against a non-empty order see the correct percentage reduction
++  reflected in the order total before confirmation.
++- **SC-002**: 100% of attempts to apply an unrecognized or empty code
++  are rejected with a clear message and leave the order total unchanged.
++- **SC-003**: When a shopper applies a second valid code on the same
++  checkout, the final total reflects only the most recently applied
++  code's percentage off the original subtotal — never a stacked or
++  compounded discount.
++- **SC-004**: The automated test suite for this feature covers all three
++  valid percentages plus at least one invalid-code path, and passes on
++  every commit.
++
++## Assumptions
++
++- The exact discount code strings (e.g., `SAVE5`, `SAVE10`, `SAVE20`)
++  are a configuration detail that can be decided during planning; the
++  spec only fixes that there are three codes mapping to 5%, 10%, and
++  20%.
++- Discount codes in this first version are not time-limited, are not
++  per-shopper, and have no usage cap. Adding expiry, per-user limits,
++  or usage caps is out of scope for v1.
++- Currency, taxes, and shipping handling are unchanged by this feature.
++  The discount applies to the order subtotal as currently computed by
++  the checkout flow.
++- The checkout flow already identifies the acting shopper through the
++  existing mechanism; no new authentication is introduced.
+diff --git a/target/specs/001-discount-codes/tasks.md b/target/specs/001-discount-codes/tasks.md
+new file mode 100644
+index 0000000..cee0a0e
+--- /dev/null
++++ b/target/specs/001-discount-codes/tasks.md
+@@ -0,0 +1,218 @@
++---
++
++description: "Task list for Percentage Discount Codes at Checkout"
++---
++
++# Tasks: Percentage Discount Codes at Checkout
++
++**Input**: Design documents from `/specs/001-discount-codes/`
++
++**Prerequisites**: plan.md (✅), spec.md (✅), research.md (✅), data-model.md (✅), contracts/discount-endpoint.md (✅), quickstart.md (✅)
++
++**Tests**: Included — the feature spec ("Include tests.") and the constitution both require tests for new routes (happy path + at least one error path).
++
++**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
++
++## Format: `[ID] [P?] [Story] Description`
++
++- **[P]**: Can run in parallel (different files, no dependencies)
++- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
++- Include exact file paths in descriptions
++
++## Path Conventions
++
++Existing single-project FastAPI layout:
++
++- App: `src/api/` (`models.py`, `deps.py`, `routes/`)
++- Tests: `tests/` (uses the `client` fixture in `tests/conftest.py`)
++
++---
++
++## Phase 1: Setup (Shared Infrastructure)
++
++**Purpose**: Confirm baseline before touching code. The project is already scaffolded (FastAPI + SQLAlchemy + pytest), so setup is minimal.
++
++- [X] T001 Run `pytest -q` from the repo root and confirm the existing suite (`tests/test_users.py`, `tests/test_orders.py`, `tests/test_dates.py`) passes on a clean checkout; record the baseline pass/fail count.
++- [X] T002 Remove any stale `app.db` at the repo root (per `CLAUDE.md`: schema is recreated from `Base.metadata` at startup; no migrations).
++
++---
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++**Purpose**: Schema and shared constants both user-story phases will depend on.
++
++**⚠️ CRITICAL**: No user story work can begin until this phase is complete.
++
++- [X] T003 Add two nullable columns to `Order` in `src/api/models.py` per `specs/001-discount-codes/data-model.md`: `subtotal: Mapped[int | None] = mapped_column(Integer, nullable=True)` and `discount_code: Mapped[str | None] = mapped_column(String(16), nullable=True)`. Keep `total` and all existing columns unchanged.
++- [X] T004 In `src/api/routes/orders.py`, add the module-level constant `DISCOUNT_CODES: dict[str, int] = {"SAVE5": 5, "SAVE10": 10, "SAVE20": 20}` near the top of the file (after imports, before the existing router). No behaviour change yet.
++- [X] T005 In `src/api/routes/orders.py`, add Pydantic request/response shapes for the new endpoint: `DiscountIn(BaseModel)` with a single field `code: str`, and extend `OrderOut` with optional fields `subtotal: int | None = None` and `discount_code: str | None = None`. Update the two existing `OrderOut(...)` construction sites in `create_order` and `get_order` to pass `subtotal=order.subtotal` and `discount_code=order.discount_code` so they continue to round-trip.
++- [X] T006 Register a stub `POST /orders/{order_id}/discount` route in `src/api/routes/orders.py` that resolves the order, enforces ownership (`get_current_user`), and returns the order unchanged. Behaviour for valid/invalid codes is added in the user-story phases below. Use `Depends(get_db)` and `Depends(get_current_user)` like the other handlers in this file.
++
++**Checkpoint**: Schema migrated (via `Base.metadata.create_all` at startup), constant and stub endpoint exist. Existing tests still pass.
++
++---
++
++## Phase 3: User Story 1 — Apply a valid discount code at checkout (Priority: P1) 🎯 MVP
++
++**Goal**: Owner of an order can POST `/orders/{order_id}/discount` with one of `SAVE5` / `SAVE10` / `SAVE20` (case-insensitive) and see the order's `total` reduced by the correct percentage, with `subtotal` and `discount_code` set on the order.
++
++**Independent Test**: Create a user + order with subtotal 100.00, POST `{"code":"SAVE10"}` to `/orders/{id}/discount` as that user, assert response `total == 9000`, `subtotal == 10000`, `discount_code == "SAVE10"`.
++
++### Tests for User Story 1
++
++> Write these tests FIRST, ensure they FAIL before implementation.
++
++- [X] T007 [P] [US1] In `tests/test_discounts.py` add a helper `_make_user_and_order(client, *, email, subtotal_cents)` mirroring the style of `tests/test_orders.py` (`_make_user`); single quantity-1 item with `unit_price` derived from `subtotal_cents / 100`.
++- [X] T008 [P] [US1] In `tests/test_discounts.py` add `test_apply_save5_discounts_by_5_percent` — order subtotal 10000 → total 9500, `discount_code == "SAVE5"`, `subtotal == 10000`.
++- [X] T009 [P] [US1] In `tests/test_discounts.py` add `test_apply_save10_discounts_by_10_percent` — order subtotal 10000 → total 9000.
++- [X] T010 [P] [US1] In `tests/test_discounts.py` add `test_apply_save20_discounts_by_20_percent` — order subtotal 5000 → total 4000.
++- [X] T011 [P] [US1] In `tests/test_discounts.py` add `test_apply_discount_is_case_insensitive` — apply `"save10"`, assert response `discount_code == "SAVE10"` and total reduced.
++- [X] T012 [P] [US1] In `tests/test_discounts.py` add `test_apply_discount_rounds_half_up` — order subtotal 999, apply `SAVE10`, assert `total == 899` (discount 100 cents, half-up).
++- [X] T013 [P] [US1] In `tests/test_discounts.py` add `test_apply_discount_on_zero_subtotal_is_accepted` — by directly creating an `Order` row with subtotal 0 via the existing `/orders` flow with a zero-priced item; assert apply returns 200 and `total == 0` (spec edge case).
++- [X] T014 [P] [US1] In `tests/test_discounts.py` add `test_apply_discount_forbidden_for_other_user` — owner creates order; another user POSTs to `/orders/{id}/discount`; assert 403 and order unchanged in a follow-up `GET`.
++- [X] T015 [P] [US1] In `tests/test_discounts.py` add `test_apply_discount_unknown_order_returns_404` — POST to `/orders/999/discount` with a valid code; assert 404.
++- [X] T016 [P] [US1] In `tests/test_discounts.py` add `test_apply_discount_requires_auth` — POST without `X-User-Id`; assert 401.
++
++### Implementation for User Story 1
++
++- [X] T017 [US1] In `src/api/routes/orders.py`, fill in the `POST /orders/{order_id}/discount` handler for the happy path per `specs/001-discount-codes/contracts/discount-endpoint.md`: uppercase `code`, look up percentage in `DISCOUNT_CODES`, snapshot `order.subtotal = order.total` when `order.subtotal is None`, compute `discount_cents = (order.subtotal * pct + 50) // 100`, set `order.total = order.subtotal - discount_cents` and `order.discount_code = code.upper()`, `db.commit()`, return the updated `OrderOut`. (Error-path branches for invalid codes are added in US2; for now an unknown code can `KeyError` — US2 will replace that with a 400.)
++- [X] T018 [US1] Run `pytest tests/test_discounts.py -q` and confirm T008–T016 all pass.
++
++**Checkpoint**: US1 is fully functional and testable independently — valid codes reduce totals; ownership/auth/not-found responses match the existing orders pattern.
++
++---
++
++## Phase 4: User Story 2 — Reject an invalid or unknown discount code (Priority: P2)
++
++**Goal**: Unknown, empty, or malformed codes return HTTP 400 with a clear message and leave the order's `total` / `subtotal` / `discount_code` unchanged.
++
++**Independent Test**: Order with subtotal 10000, POST `{"code":"NOPE123"}` to `/orders/{id}/discount` as the owner → 400 `{"detail":"invalid discount code"}`; follow-up `GET /orders/{id}` still shows `total == 10000` and `discount_code is None`.
++
++### Tests for User Story 2
++
++- [X] T019 [P] [US2] In `tests/test_discounts.py` add `test_apply_unknown_code_returns_400_and_does_not_change_total` — order subtotal 10000; POST `{"code":"NOPE123"}`; assert 400 with `detail == "invalid discount code"`; follow-up `GET /orders/{id}` shows `total == 10000`, `discount_code is None`.
++- [X] T020 [P] [US2] In `tests/test_discounts.py` add `test_apply_empty_code_returns_400` — POST `{"code":""}`; assert 400 and total unchanged.
++- [X] T021 [P] [US2] In `tests/test_discounts.py` add `test_apply_code_for_unsupported_percentage_returns_400` — POST `{"code":"SAVE15"}`; assert 400 and total unchanged (guards FR-002).
++
++### Implementation for User Story 2
++
++- [X] T022 [US2] In `src/api/routes/orders.py`, in the `POST /orders/{order_id}/discount` handler, before applying any mutation: if `code` is missing, empty after `.strip()`, or `code.strip().upper()` is not a key of `DISCOUNT_CODES`, `raise HTTPException(status_code=400, detail="invalid discount code")`. Ensure no DB writes happen on the rejection path (do the validation before any field assignment / `db.commit()`).
++- [X] T023 [US2] Run `pytest tests/test_discounts.py -q` and confirm T019–T021 pass and the US1 tests still pass.
++
++**Checkpoint**: US1 + US2 both work — valid codes apply, invalid codes are rejected cleanly with no side effects.
++
++---
++
++## Phase 5: User Story 3 — Replace a previously applied code (Priority: P3)
++
++**Goal**: Re-applying a different valid code on the same order replaces the first; the new `total` is computed from the **original** subtotal, not the already-discounted total.
++
++**Independent Test**: Order with subtotal 10000, apply `SAVE5` (total 9500), then apply `SAVE20` → final `total == 8000` (20% off 10000), `discount_code == "SAVE20"`, `subtotal == 10000`. Not 7600 (20% off 9500), not 7500 (5%+20% stacked).
++
++### Tests for User Story 3
++
++- [X] T024 [P] [US3] In `tests/test_discounts.py` add `test_apply_second_code_replaces_first` — order subtotal 10000; apply `SAVE5` (assert total 9500); apply `SAVE20`; assert `total == 8000`, `discount_code == "SAVE20"`, `subtotal == 10000`.
++- [X] T025 [P] [US3] In `tests/test_discounts.py` add `test_apply_then_invalid_code_keeps_first_discount` — order subtotal 10000; apply `SAVE10` (total 9000); apply `NOPE` → 400; follow-up `GET` still shows `total == 9000`, `discount_code == "SAVE10"`, `subtotal == 10000` (guards FR-005 + FR-007 interaction).
++
++### Implementation for User Story 3
++
++- [X] T026 [US3] Verify the snapshot-on-first-apply logic in `src/api/routes/orders.py` (added in T017) is correct: `subtotal` is set only when `order.subtotal is None`, so a second apply reuses the original snapshot. If T017 was implemented otherwise (e.g., `subtotal` re-derived each call from `total`), adjust to the `if order.subtotal is None:` guard. No new logic should be needed beyond confirming this guard exists.
++- [X] T027 [US3] Run `pytest tests/test_discounts.py -q` and confirm T024–T025 pass along with all earlier tests.
++
++**Checkpoint**: All three user stories now pass independently and together.
++
++---
++
++## Phase 6: Polish & Cross-Cutting Concerns
++
++**Purpose**: Final verification against the spec and constitution gates.
++
++- [X] T028 [P] Run the full suite: `pytest -q` from the repo root; confirm all pre-existing tests plus `tests/test_discounts.py` pass.
++- [X] T029 [P] Walk through `specs/001-discount-codes/quickstart.md` against a locally running `uvicorn api.main:app` (steps 1–6) and confirm each curl produces the documented response. Reset `app.db` first.
++- [X] T030 Re-read `src/api/routes/orders.py` and `src/api/models.py` and confirm: (a) no unrelated refactors slipped in (constitution: "Don't refactor unrelated code"), (b) every new public function / handler has type hints, (c) no new third-party imports were added.
++- [X] T031 Confirm coverage on changed files: `pytest --cov=src/api/routes/orders.py --cov=src/api/models.py tests/test_discounts.py tests/test_orders.py` reports ≥80% on the changed lines (constitution gate). If `pytest-cov` is not installed, skip and note in the PR description.
++
++---
++
++## Dependencies & Execution Order
++
++### Phase Dependencies
++
++- **Setup (Phase 1)** → no dependencies; can start immediately.
++- **Foundational (Phase 2)** → depends on Setup; **BLOCKS** all user stories (T003 / T004 / T005 / T006 must all be done before any [US*] task).
++- **User Story 1 (Phase 3)** → depends on Foundational; standalone MVP.
++- **User Story 2 (Phase 4)** → depends on Foundational; relies on the endpoint stub from T006 and the happy-path handler from T017 to wrap with validation. May start in parallel with US1 as long as T006 is done.
++- **User Story 3 (Phase 5)** → depends on Foundational and on T017 (snapshot logic added there). Tests for US3 can be written in parallel with US2 tests once T006 lands.
++- **Polish (Phase 6)** → depends on US1 + US2 + US3 being complete.
++
++### User Story Dependencies
++
++- **US1 (P1)**: Foundational only. Delivers the core MVP.
++- **US2 (P2)**: Foundational + T017 (it adds the validation guard in front of the existing handler).
++- **US3 (P3)**: Foundational + T017 (it relies on the `if order.subtotal is None` snapshot logic introduced in T017; the test in T024 also runs `SAVE5` first which is provided by US1).
++
++### Within Each User Story
++
++- Tests are written and run FIRST, expected to FAIL, then implementation makes them pass.
++- Implementation tasks edit shared files (`src/api/routes/orders.py`) — they are sequential within a story, not parallel.
++
++### Parallel Opportunities
++
++- All **Phase 3 test tasks** (T007–T016) are `[P]` — they all touch the same new file `tests/test_discounts.py` but each test function is independent; a single contributor can write them in parallel, or split across contributors with merge coordination on the file.
++- **Phase 4 test tasks** (T019–T021) are `[P]` with each other.
++- **Phase 5 test tasks** (T024–T025) are `[P]` with each other.
++- **Polish tasks** T028 and T029 are `[P]` (different concerns: pytest vs. live uvicorn walkthrough).
++- Implementation tasks T017 / T022 / T026 all edit `src/api/routes/orders.py` → must be sequential.
++
++---
++
++## Parallel Example: User Story 1
++
++```bash
++# Once Foundational (T003–T006) is done, draft all US1 tests in parallel:
++Task: "T008 [US1] test_apply_save5_discounts_by_5_percent in tests/test_discounts.py"
++Task: "T009 [US1] test_apply_save10_discounts_by_10_percent in tests/test_discounts.py"
++Task: "T010 [US1] test_apply_save20_discounts_by_20_percent in tests/test_discounts.py"
++Task: "T011 [US1] test_apply_discount_is_case_insensitive in tests/test_discounts.py"
++Task: "T012 [US1] test_apply_discount_rounds_half_up in tests/test_discounts.py"
++
++# Then run them — they should all FAIL — then do T017 (implementation) — then T018 (run, green).
++```
++
++---
++
++## Implementation Strategy
++
++### MVP First (User Story 1 only)
++
++1. Complete Phase 1: Setup (T001–T002).
++2. Complete Phase 2: Foundational (T003–T006). **CRITICAL — blocks all stories.**
++3. Complete Phase 3: User Story 1 (T007–T018).
++4. **STOP and VALIDATE**: run `pytest tests/test_discounts.py -q`; walk through quickstart steps 1–4.
++5. This is a shippable MVP — shoppers can apply valid codes; invalid codes currently `KeyError` (500). Add US2 before exposing externally.
++
++### Incremental Delivery
++
++1. Setup + Foundational → schema and stub endpoint exist.
++2. Add US1 → valid codes apply (MVP).
++3. Add US2 → invalid codes get a clean 400.
++4. Add US3 → users can change their mind without compounding the discount.
++5. Polish → full-suite green, coverage check, quickstart walkthrough.
++
++### Parallel Team Strategy
++
++With two contributors after Foundational lands:
++
++- Contributor A: US1 tests + implementation (T007–T018).
++- Contributor B: drafts US2 tests (T019–T021) and US3 tests (T024–T025) against the contract; merges after T017 is in.
++- Then either contributor picks up T022 (US2 impl) and T026 (US3 verification).
++
++---
++
++## Notes
++
++- `[P]` tasks = different files OR different test functions in the same new file with no shared edits beyond the file header.
++- `[Story]` label maps a task to its user story for traceability.
++- The constitution gates (≥80% coverage on changed files, happy + error path per route) are checked in T031 and are already satisfied by the test list above.
++- No new third-party dependencies are added by any task.
++- Existing files outside `src/api/routes/orders.py` and `src/api/models.py` are not modified.
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..bd76c5d 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -28,6 +28,8 @@ class Order(Base):
+     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+     # Stored as integer cents. See _to_cents in routes/orders.py.
+     total: Mapped[int] = mapped_column(Integer, nullable=False)
++    subtotal: Mapped[int | None] = mapped_column(Integer, nullable=True)
++    discount_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+     created_at: Mapped[datetime] = mapped_column(
+         DateTime, default=datetime.utcnow, nullable=False
+     )
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..1d649b9 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -9,6 +9,12 @@ from api.models import Order, OrderItem, User
+ 
+ router = APIRouter(prefix="/orders", tags=["orders"])
+ 
++DISCOUNT_CODES: dict[str, int] = {
++    "SAVE5": 5,
++    "SAVE10": 10,
++    "SAVE20": 20,
++}
++
+ 
+ def _to_cents(dollars: float) -> int:
+     return int(round(dollars * 100))
+@@ -33,10 +39,16 @@ class OrderItemOut(BaseModel):
+         from_attributes = True
+ 
+ 
++class DiscountIn(BaseModel):
++    code: str
++
++
+ class OrderOut(BaseModel):
+     id: int
+     user_id: int
+     total: int
++    subtotal: int | None = None
++    discount_code: str | None = None
+     created_at: str
+     items: list[OrderItemOut]
+ 
+@@ -74,6 +86,8 @@ def create_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
++        subtotal=order.subtotal,
++        discount_code=order.discount_code,
+         created_at=order.created_at.strftime("%Y-%d-%m"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+@@ -98,6 +112,50 @@ def get_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
++        subtotal=order.subtotal,
++        discount_code=order.discount_code,
++        created_at=order.created_at.strftime("%Y-%d-%m"),
++        items=[
++            OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
++            for i in order.items
++        ],
++    )
++
++
++@router.post("/{order_id}/discount", response_model=OrderOut)
++def apply_discount(
++    order_id: int,
++    payload: DiscountIn,
++    db: Session = Depends(get_db),
++    user: User = Depends(get_current_user),
++) -> OrderOut:
++    order = db.get(Order, order_id)
++    if order is None:
++        raise HTTPException(status_code=404, detail="order not found")
++    if order.user_id != user.id:
++        raise HTTPException(status_code=403, detail="forbidden")
++
++    code = (payload.code or "").strip().upper()
++    if not code or code not in DISCOUNT_CODES:
++        raise HTTPException(status_code=400, detail="invalid discount code")
++
++    if order.subtotal is None:
++        order.subtotal = order.total
++
++    percentage = DISCOUNT_CODES[code]
++    discount_cents = (order.subtotal * percentage + 50) // 100
++    order.total = order.subtotal - discount_cents
++    order.discount_code = code
++
++    db.commit()
++    db.refresh(order)
++
++    return OrderOut(
++        id=order.id,
++        user_id=order.user_id,
++        total=order.total,
++        subtotal=order.subtotal,
++        discount_code=order.discount_code,
+         created_at=order.created_at.strftime("%Y-%d-%m"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+diff --git a/target/tests/test_discounts.py b/target/tests/test_discounts.py
+new file mode 100644
+index 0000000..f5fe03f
+--- /dev/null
++++ b/target/tests/test_discounts.py
+@@ -0,0 +1,260 @@
++def _make_user(client, *, email="u@example.com", name="U"):
++    resp = client.post("/users", json={"email": email, "name": name})
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def _make_user_and_order(client, *, email, subtotal_cents):
++    user = _make_user(client, email=email)
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [
++                {"sku": "X", "quantity": 1, "unit_price": subtotal_cents / 100}
++            ]
++        },
++    )
++    assert resp.status_code == 201, resp.text
++    order = resp.json()
++    assert order["total"] == subtotal_cents
++    return user, order
++
++
++def test_apply_save5_discounts_by_5_percent(client):
++    user, order = _make_user_and_order(
++        client, email="us1a@example.com", subtotal_cents=10000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE5"},
++    )
++    assert resp.status_code == 200, resp.text
++    body = resp.json()
++    assert body["subtotal"] == 10000
++    assert body["discount_code"] == "SAVE5"
++    assert body["total"] == 9500
++
++
++def test_apply_save10_discounts_by_10_percent(client):
++    user, order = _make_user_and_order(
++        client, email="us1b@example.com", subtotal_cents=10000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 200
++    assert resp.json()["total"] == 9000
++
++
++def test_apply_save20_discounts_by_20_percent(client):
++    user, order = _make_user_and_order(
++        client, email="us1c@example.com", subtotal_cents=5000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE20"},
++    )
++    assert resp.status_code == 200
++    assert resp.json()["total"] == 4000
++
++
++def test_apply_discount_is_case_insensitive(client):
++    user, order = _make_user_and_order(
++        client, email="us1d@example.com", subtotal_cents=10000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "save10"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["discount_code"] == "SAVE10"
++    assert body["total"] == 9000
++
++
++def test_apply_discount_rounds_half_up(client):
++    user, order = _make_user_and_order(
++        client, email="us1e@example.com", subtotal_cents=999
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 899
++
++
++def test_apply_discount_on_zero_subtotal_is_accepted(client):
++    user = _make_user(client, email="us1f@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "FREE", "quantity": 1, "unit_price": 0.00}]},
++    )
++    assert resp.status_code == 201
++    order = resp.json()
++    assert order["total"] == 0
++
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["total"] == 0
++    assert body["subtotal"] == 0
++    assert body["discount_code"] == "SAVE10"
++
++
++def test_apply_discount_forbidden_for_other_user(client):
++    owner, order = _make_user_and_order(
++        client, email="us1g_owner@example.com", subtotal_cents=10000
++    )
++    other = _make_user(client, email="us1g_other@example.com")
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(other["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 403
++
++    follow_up = client.get(
++        f"/orders/{order['id']}", headers={"X-User-Id": str(owner["id"])}
++    )
++    assert follow_up.status_code == 200
++    body = follow_up.json()
++    assert body["total"] == 10000
++    assert body["discount_code"] is None
++
++
++def test_apply_discount_unknown_order_returns_404(client):
++    user = _make_user(client, email="us1h@example.com")
++    resp = client.post(
++        "/orders/999/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert resp.status_code == 404
++
++
++def test_apply_discount_requires_auth(client):
++    _make_user(client, email="us1i@example.com")
++    resp = client.post("/orders/1/discount", json={"code": "SAVE10"})
++    assert resp.status_code == 401
++
++
++def test_apply_unknown_code_returns_400_and_does_not_change_total(client):
++    user, order = _make_user_and_order(
++        client, email="us2a@example.com", subtotal_cents=10000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "NOPE123"},
++    )
++    assert resp.status_code == 400
++    assert resp.json()["detail"] == "invalid discount code"
++
++    follow_up = client.get(
++        f"/orders/{order['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    body = follow_up.json()
++    assert body["total"] == 10000
++    assert body["discount_code"] is None
++
++
++def test_apply_empty_code_returns_400(client):
++    user, order = _make_user_and_order(
++        client, email="us2b@example.com", subtotal_cents=10000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": ""},
++    )
++    assert resp.status_code == 400
++
++    follow_up = client.get(
++        f"/orders/{order['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert follow_up.json()["total"] == 10000
++
++
++def test_apply_code_for_unsupported_percentage_returns_400(client):
++    user, order = _make_user_and_order(
++        client, email="us2c@example.com", subtotal_cents=10000
++    )
++    resp = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE15"},
++    )
++    assert resp.status_code == 400
++
++    follow_up = client.get(
++        f"/orders/{order['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert follow_up.json()["total"] == 10000
++
++
++def test_apply_second_code_replaces_first(client):
++    user, order = _make_user_and_order(
++        client, email="us3a@example.com", subtotal_cents=10000
++    )
++
++    first = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE5"},
++    )
++    assert first.status_code == 200
++    assert first.json()["total"] == 9500
++
++    second = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE20"},
++    )
++    assert second.status_code == 200
++    body = second.json()
++    assert body["total"] == 8000
++    assert body["subtotal"] == 10000
++    assert body["discount_code"] == "SAVE20"
++
++
++def test_apply_then_invalid_code_keeps_first_discount(client):
++    user, order = _make_user_and_order(
++        client, email="us3b@example.com", subtotal_cents=10000
++    )
++
++    first = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "SAVE10"},
++    )
++    assert first.status_code == 200
++    assert first.json()["total"] == 9000
++
++    bad = client.post(
++        f"/orders/{order['id']}/discount",
++        headers={"X-User-Id": str(user["id"])},
++        json={"code": "NOPE"},
++    )
++    assert bad.status_code == 400
++
++    follow_up = client.get(
++        f"/orders/{order['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    body = follow_up.json()
++    assert body["total"] == 9000
++    assert body["subtotal"] == 10000
++    assert body["discount_code"] == "SAVE10"
