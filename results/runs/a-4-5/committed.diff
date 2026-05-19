@@ -1,0 +1,155 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..2236a53 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -14,6 +14,9 @@ def _to_cents(dollars: float) -> int:
+     return int(round(dollars * 100))
+ 
+ 
++DISCOUNT_CODES = {"SAVE5": 5, "SAVE10": 10, "SAVE20": 20}
++
++
+ class OrderItemIn(BaseModel):
+     sku: str
+     quantity: int
+@@ -22,6 +25,7 @@ class OrderItemIn(BaseModel):
+ 
+ class OrderCreate(BaseModel):
+     items: list[OrderItemIn]
++    discount_code: str | None = None
+ 
+ 
+ class OrderItemOut(BaseModel):
+@@ -66,6 +70,13 @@ def create_order(
+         db.add(line)
+         total += unit_price_cents * item.quantity
+ 
++    if payload.discount_code:
++        code = payload.discount_code.upper()
++        if code not in DISCOUNT_CODES:
++            raise HTTPException(status_code=400, detail="invalid discount code")
++        discount_cents = (total * DISCOUNT_CODES[code]) // 100
++        total -= discount_cents
++
+     order.total = total
+     db.commit()
+     db.refresh(order)
+diff --git a/target/tests/test_orders.py b/target/tests/test_orders.py
+index afc76b3..49d6b94 100644
+--- a/target/tests/test_orders.py
++++ b/target/tests/test_orders.py
+@@ -50,6 +50,59 @@ def test_get_order_forbidden_for_other_user(client):
+     assert resp.status_code == 403
+ 
+ 
++def test_create_order_applies_valid_discount(client):
++    user = _make_user(client, email="disc@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}],
++            "discount_code": "SAVE10",
++        },
++    )
++    assert resp.status_code == 201
++    assert resp.json()["total"] == 1799
++
++
++def test_create_order_rejects_invalid_discount(client):
++    user = _make_user(client, email="bogus@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}],
++            "discount_code": "BOGUS",
++        },
++    )
++    assert resp.status_code == 400
++    assert resp.json()["detail"] == "invalid discount code"
++
++
++def test_create_order_without_discount_unchanged(client):
++    user = _make_user(client, email="nodisc@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}]},
++    )
++    assert resp.status_code == 201
++    assert resp.json()["total"] == 1998
++
++
++def test_create_order_discount_code_case_insensitive(client):
++    user = _make_user(client, email="case@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}],
++            "discount_code": "save20",
++        },
++    )
++    assert resp.status_code == 201
++    assert resp.json()["total"] == 1599
++
++
+ def test_get_order_returns_owner(client):
+     owner = _make_user(client, email="owner2@example.com")
+     created = client.post(
