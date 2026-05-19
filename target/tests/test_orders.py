@@ -62,3 +62,40 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_create_order_date_format(client):
+    user = _make_user(client, email="datefmt_create@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "DATECHK", "quantity": 1, "unit_price": 1.00}]},
+    )
+    assert resp.status_code == 201
+    created_at = resp.json()["created_at"]
+    parts = created_at.split("-")
+    assert len(parts) == 3
+    year, month, day = parts
+    assert len(year) == 4
+    assert 1 <= int(month) <= 12
+    assert 1 <= int(day) <= 31
+
+
+def test_get_order_date_format(client):
+    user = _make_user(client, email="datefmt_get@example.com")
+    created = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "DATECHK", "quantity": 1, "unit_price": 1.00}]},
+    ).json()
+    resp = client.get(
+        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 200
+    created_at = resp.json()["created_at"]
+    parts = created_at.split("-")
+    assert len(parts) == 3
+    year, month, day = parts
+    assert len(year) == 4
+    assert 1 <= int(month) <= 12
+    assert 1 <= int(day) <= 31
