@@ -1,0 +1,23 @@
+{
+  "workflow": "a",
+  "task": 2,
+  "run": 4,
+  "label": "Scripted Plan Mode replication",
+  "branch": "workflow-a/task-2/run-4",
+  "base_branch": "main",
+  "prompt_hash": "sha256:8638ec105782963d366358107f49c6b64da67a3a645a43a9f7de7c6a11c534cf",
+  "session_id": "ad67658c-30aa-43bc-b238-d7c0cc5fd518",
+  "model": "opus",
+  "hermetic_mode": true,
+  "context_source": "target_only",
+  "duration_seconds": 249,
+  "plan_call_cost_usd": 0.6522768500000001,
+  "plan_call_tokens_input": 17,
+  "plan_call_tokens_output": 5679,
+  "execute_call_cost_usd": 0.9658270000000001,
+  "execute_call_tokens_input": 34,
+  "execute_call_tokens_output": 6885,
+  "total_cost_usd": 1.618104,
+  "total_tokens_input": 51,
+  "total_tokens_output": 12564
+}
