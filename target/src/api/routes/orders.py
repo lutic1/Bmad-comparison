@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
-from api.models import Order, OrderItem, User
+from api.models import DiscountCode, Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -37,6 +37,22 @@ class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    created_at: str
+    items: list[OrderItemOut]
+
+
+class DiscountApplyRequest(BaseModel):
+    code: str
+
+
+class OrderWithDiscountOut(BaseModel):
+    id: int
+    user_id: int
+    subtotal: int
+    discount_code: str | None
+    discount_percentage: int | None
+    discount_amount: int | None
+    final_total: int
     created_at: str
     items: list[OrderItemOut]
 
@@ -98,6 +114,53 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        created_at=order.created_at.strftime("%Y-%d-%m"),
+        items=[
+            OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+            for i in order.items
+        ],
+    )
+
+
+@router.post("/{order_id}/apply-discount", response_model=OrderWithDiscountOut)
+def apply_discount(
+    order_id: int,
+    payload: DiscountApplyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> OrderWithDiscountOut:
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.user_id != user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    if order.discount_code_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="A discount has already been applied to this order",
+        )
+
+    normalised = payload.code.strip().upper()
+    dc = db.query(DiscountCode).filter(DiscountCode.code == normalised).first()
+    if dc is None:
+        raise HTTPException(status_code=400, detail="Invalid discount code")
+    if not dc.is_active:
+        raise HTTPException(status_code=400, detail="Discount code is no longer active")
+
+    order.discount_code_id = dc.id
+    db.commit()
+    db.refresh(order)
+
+    subtotal = order.total
+    discount_amount = round(subtotal * dc.percentage / 100)
+    return OrderWithDiscountOut(
+        id=order.id,
+        user_id=order.user_id,
+        subtotal=subtotal,
+        discount_code=dc.code,
+        discount_percentage=dc.percentage,
+        discount_amount=discount_amount,
+        final_total=subtotal - discount_amount,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)

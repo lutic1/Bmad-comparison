@@ -1,11 +1,22 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class DiscountCode(Base):
+    __tablename__ = "discount_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    percentage: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    orders: Mapped[list["Order"]] = relationship(back_populates="discount_code")
 
 
 class User(Base):
@@ -32,7 +43,12 @@ class Order(Base):
         DateTime, default=datetime.utcnow, nullable=False
     )
 
+    discount_code_id: Mapped[int | None] = mapped_column(
+        ForeignKey("discount_codes.id"), nullable=True, default=None
+    )
+
     user: Mapped[User] = relationship(back_populates="orders")
+    discount_code: Mapped["DiscountCode | None"] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
