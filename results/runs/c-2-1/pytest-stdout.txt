@@ -1,0 +1,30 @@
+...................                                                      [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:291
+.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:291
+  /Users/luisticas/bmad-demo/target/.venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:291: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.9/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+tests/test_orders.py: 25 warnings
+tests/test_users.py: 3 warnings
+  /Users/luisticas/bmad-demo/target/.venv/lib/python3.13/site-packages/sqlalchemy/sql/schema.py:3596: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+tests/test_orders.py::test_refund_expired_window_422
+  /Users/luisticas/bmad-demo/target/tests/test_orders.py:126: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    row.created_at = datetime.utcnow() - timedelta(days=31)
+
+tests/test_orders.py::test_refund_expired_window_422
+tests/test_orders.py::test_refund_success_200
+tests/test_orders.py::test_refund_already_refunded_409
+tests/test_orders.py::test_refund_reflected_in_get_order
+  /Users/luisticas/bmad-demo/target/src/api/routes/orders.py:135: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if datetime.utcnow() - order.created_at > timedelta(days=30):
+
+tests/test_orders.py::test_refund_success_200
+tests/test_orders.py::test_refund_already_refunded_409
+tests/test_orders.py::test_refund_reflected_in_get_order
+  /Users/luisticas/bmad-demo/target/src/api/routes/orders.py:138: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
