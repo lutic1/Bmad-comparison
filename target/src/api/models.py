@@ -32,6 +32,9 @@ class Order(Base):
         DateTime, default=datetime.utcnow, nullable=False
     )
 
+    discount_code: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    discount_pct: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+
     user: Mapped[User] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
@@ -48,3 +51,11 @@ class OrderItem(Base):
     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="items")
+
+
+class DiscountCode(Base):
+    __tablename__ = "discount_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    pct: Mapped[int] = mapped_column(Integer, nullable=False)

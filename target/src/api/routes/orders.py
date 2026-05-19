@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
-from api.models import Order, OrderItem, User
+from api.models import DiscountCode, Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -22,6 +22,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -39,6 +40,8 @@ class OrderOut(BaseModel):
     total: int
     created_at: str
     items: list[OrderItemOut]
+    discount_code: str | None = None
+    discount_pct: int | None = None
 
 
 @router.post("", response_model=OrderOut, status_code=201)
@@ -66,6 +69,14 @@ def create_order(
         db.add(line)
         total += unit_price_cents * item.quantity
 
+    if payload.discount_code is not None:
+        dc = db.query(DiscountCode).filter(DiscountCode.code == payload.discount_code).one_or_none()
+        if dc is None:
+            raise HTTPException(status_code=400, detail="invalid discount code")
+        total -= int(total * dc.pct / 100)
+        order.discount_code = dc.code
+        order.discount_pct = dc.pct
+
     order.total = total
     db.commit()
     db.refresh(order)
@@ -79,6 +90,8 @@ def create_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+        discount_code=order.discount_code,
+        discount_pct=order.discount_pct,
     )
 
 
@@ -103,6 +116,8 @@ def get_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+        discount_code=order.discount_code,
+        discount_pct=order.discount_pct,
     )
 
 
