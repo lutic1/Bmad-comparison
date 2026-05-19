@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -31,6 +31,8 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
+    refunded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     user: Mapped[User] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
