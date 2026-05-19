@@ -191,9 +191,9 @@ trap 'rm -rf "$CLEAN_HOME"' EXIT
 call_claude() {
     local name="$1"; local n="$2"; local resume="$3"; local text="$4"
     local out="$ART_DIR/phase-${n}-${name}.json"
-    local resume_arg=()
+    local resume_arg=""
     if [[ -n "$resume" ]]; then
-        resume_arg=(--resume "$resume")
+        resume_arg="--resume $resume"
     fi
     (
         cd "$REPO_ROOT/target"
@@ -201,7 +201,7 @@ call_claude() {
         claude --print \
             --model "$MODEL" \
             --add-dir "$REPO_ROOT/target" \
-            "${resume_arg[@]}" \
+            $resume_arg \
             --permission-mode bypassPermissions \
             --output-format json \
             "$text" > "$out"
