@@ -59,6 +59,14 @@ WORKFLOW_RUNBOOKS = {
     "c": "c-bmad.md",
 }
 
+# Each workflow branches off a different base so framework files don't
+# contaminate the other workflows. See README → Repository layout.
+WORKFLOW_BASE_BRANCHES = {
+    "a": "main",
+    "b": "spec-kit-base",
+    "c": "bmad-base",
+}
+
 
 def run_git(*args: str, cwd: Path = REPO_ROOT, check: bool = True) -> str:
     result = subprocess.run(
@@ -86,7 +94,8 @@ def confirm_clean_tree() -> None:
 
 def checkout_run_branch(workflow: str, task: int, run: int) -> str:
     branch = f"workflow-{workflow}/task-{task}/run-{run}"
-    run_git("checkout", "main")
+    base = WORKFLOW_BASE_BRANCHES[workflow]
+    run_git("checkout", base)
     # Delete the branch locally if it exists from a previous attempt.
     existing = subprocess.run(
         ["git", "rev-parse", "--verify", branch],
@@ -125,11 +134,11 @@ def print_workflow_prompt(workflow: str, task: int) -> None:
     print()
 
 
-def collect_diff_stats(branch: str) -> dict[str, int]:
+def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
     # Use a staged-ish view: include both committed (if any) and working
-    # tree changes relative to main.
+    # tree changes relative to the workflow's base branch.
     output = subprocess.run(
-        ["git", "diff", "main...HEAD", "--numstat"],
+        ["git", "diff", f"{base}...HEAD", "--numstat"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -174,10 +183,10 @@ def collect_diff_stats(branch: str) -> dict[str, int]:
     }
 
 
-def save_diff_artifact(artifact_dir: Path) -> None:
+def save_diff_artifact(artifact_dir: Path, base: str) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     committed = subprocess.run(
-        ["git", "diff", "main...HEAD"],
+        ["git", "diff", f"{base}...HEAD"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -297,10 +306,11 @@ def main() -> int:
     artifact_dir = RUNS_DIR / f"{args.workflow}-{args.task}-{args.run}"
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
+    base = WORKFLOW_BASE_BRANCHES[args.workflow]
     print()
-    print("Capturing diff…")
-    save_diff_artifact(artifact_dir)
-    diff_stats = collect_diff_stats(branch)
+    print(f"Capturing diff (vs {base})…")
+    save_diff_artifact(artifact_dir, base)
+    diff_stats = collect_diff_stats(branch, base)
     print(
         f"  files changed: {diff_stats['files_changed']}"
         f"   +{diff_stats['lines_added']} -{diff_stats['lines_removed']}"
@@ -352,7 +362,7 @@ def main() -> int:
     print(f"Artifacts:    {artifact_dir.relative_to(REPO_ROOT)}")
     print()
     print("When you're ready for the next run:")
-    print("  git checkout main")
+    print(f"  git checkout {base}")
     print(f"  # branch {branch} retained for diff inspection")
     return 0
 

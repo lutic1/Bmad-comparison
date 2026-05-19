@@ -7,12 +7,12 @@ GitHub's Spec Kit is a slash-command toolkit on top of an agent
 ## One-time setup
 
 ```bash
-# Install Spec Kit per its docs
-# https://github.com/github/spec-kit
-# (Typically: install the spec-kit CLI, then initialise inside the project.)
+# Install Spec Kit per its docs (https://github.com/github/spec-kit).
+# Recommended path on macOS with uv installed:
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
 
-# Verify
-speckit --version
+# Verify (binary is `specify`, not `speckit`)
+specify --version
 ```
 
 Spec Kit drops its slash commands into the agent's command directory.
@@ -31,8 +31,10 @@ When the harness pauses, in another shell:
 ```bash
 cp workflows/claude-md-template/CLAUDE.md target/CLAUDE.md
 cd target
-# initialise spec-kit if it isn't already on this branch
-speckit init   # follow the prompts, choose Claude Code as the agent
+# Spec Kit is already initialised on the spec-kit-base branch — the
+# harness branches workflow-b/* off it, so target/specs/, target/memory/,
+# and target/.specify/ inherit. No need to re-run `specify init` per run.
+# If you ever need to re-init: `specify init --here --ai claude --force`.
 claude
 ```
 

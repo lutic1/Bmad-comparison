@@ -119,8 +119,12 @@ checklist in the final section of this README.
 
 Before the first run:
 
-- [ ] Python 3.11+ available
-- [ ] `cd target && pip install -e ".[dev]" && pytest` — all tests pass
+- [ ] Python 3.11–3.13 available (note: 3.14 fails to build the pinned
+  `pydantic-core` — no wheel, source build via maturin errors. Use 3.13.)
+- [ ] `cd target && pip install -e ".[dev]" && pytest` — all tests pass.
+  Then run the harness with the venv's interpreter, e.g.
+  `target/.venv/bin/python harness/run.py …`, so the subprocess that calls
+  `pytest` finds the editable install.
 - [ ] Claude Code CLI installed and authenticated (`claude --version`)
 - [ ] Anthropic API key set (`ANTHROPIC_API_KEY`)
 - [ ] Spec Kit installed — see `workflows/b-spec-kit.md`
