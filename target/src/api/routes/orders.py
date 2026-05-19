@@ -14,6 +14,9 @@ def _to_cents(dollars: float) -> int:
     return int(round(dollars * 100))
 
 
+DISCOUNT_CODES = {"SAVE5": 5, "SAVE10": 10, "SAVE20": 20}
+
+
 class OrderItemIn(BaseModel):
     sku: str
     quantity: int
@@ -22,6 +25,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -65,6 +69,13 @@ def create_order(
         )
         db.add(line)
         total += unit_price_cents * item.quantity
+
+    if payload.discount_code:
+        code = payload.discount_code.upper()
+        if code not in DISCOUNT_CODES:
+            raise HTTPException(status_code=400, detail="invalid discount code")
+        discount_cents = (total * DISCOUNT_CODES[code]) // 100
+        total -= discount_cents
 
     order.total = total
     db.commit()

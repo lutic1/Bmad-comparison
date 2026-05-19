@@ -50,6 +50,59 @@ def test_get_order_forbidden_for_other_user(client):
     assert resp.status_code == 403
 
 
+def test_create_order_applies_valid_discount(client):
+    user = _make_user(client, email="disc@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}],
+            "discount_code": "SAVE10",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["total"] == 1799
+
+
+def test_create_order_rejects_invalid_discount(client):
+    user = _make_user(client, email="bogus@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}],
+            "discount_code": "BOGUS",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "invalid discount code"
+
+
+def test_create_order_without_discount_unchanged(client):
+    user = _make_user(client, email="nodisc@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}]},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["total"] == 1998
+
+
+def test_create_order_discount_code_case_insensitive(client):
+    user = _make_user(client, email="case@example.com")
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={
+            "items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}],
+            "discount_code": "save20",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["total"] == 1599
+
+
 def test_get_order_returns_owner(client):
     owner = _make_user(client, email="owner2@example.com")
     created = client.post(
