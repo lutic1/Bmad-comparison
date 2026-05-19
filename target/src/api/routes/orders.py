@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
+from api.discounts import InvalidDiscountCode, apply_discount, resolve_percent
 from api.models import Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -22,6 +23,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -37,6 +39,9 @@ class OrderOut(BaseModel):
     id: int
     user_id: int
     total: int
+    discount_code: str | None
+    discount_percent: int | None
+    discount_cents: int | None
     created_at: str
     items: list[OrderItemOut]
 
@@ -50,11 +55,20 @@ def create_order(
     if not payload.items:
         raise HTTPException(status_code=400, detail="order must have at least one item")
 
+    # Validate discount BEFORE writing anything so an invalid code leaves zero rows.
+    discount_code: str | None = None
+    discount_percent: int | None = None
+    if payload.discount_code is not None:
+        try:
+            discount_code, discount_percent = resolve_percent(payload.discount_code)
+        except InvalidDiscountCode:
+            raise HTTPException(status_code=400, detail="invalid discount code")
+
     order = Order(user_id=user.id, total=0)
     db.add(order)
     db.flush()
 
-    total = 0
+    subtotal = 0
     for item in payload.items:
         unit_price_cents = _to_cents(item.unit_price)
         line = OrderItem(
@@ -64,9 +78,17 @@ def create_order(
             unit_price=unit_price_cents,
         )
         db.add(line)
-        total += unit_price_cents * item.quantity
+        subtotal += unit_price_cents * item.quantity
+
+    if discount_percent is not None:
+        total, discount_cents = apply_discount(subtotal, discount_percent)
+    else:
+        total, discount_cents = subtotal, None
 
     order.total = total
+    order.discount_code = discount_code
+    order.discount_percent = discount_percent
+    order.discount_cents = discount_cents
     db.commit()
     db.refresh(order)
 
@@ -74,6 +96,9 @@ def create_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        discount_code=order.discount_code,
+        discount_percent=order.discount_percent,
+        discount_cents=order.discount_cents,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
@@ -98,6 +123,9 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
+        discount_code=order.discount_code,
+        discount_percent=order.discount_percent,
+        discount_cents=order.discount_cents,
         created_at=order.created_at.strftime("%Y-%d-%m"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
