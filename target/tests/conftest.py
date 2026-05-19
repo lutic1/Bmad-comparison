@@ -6,7 +6,15 @@ from sqlalchemy.pool import StaticPool
 
 from api import deps
 from api.main import app
+from api.middleware.rate_limit import limiter
 from api.models import Base
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture
