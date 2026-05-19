@@ -1,0 +1,135 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..5583eea 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -74,7 +74,7 @@ def create_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
+-        created_at=order.created_at.strftime("%Y-%d-%m"),
++        created_at=order.created_at.strftime("%Y-%m-%d"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+@@ -98,7 +98,7 @@ def get_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
+-        created_at=order.created_at.strftime("%Y-%d-%m"),
++        created_at=order.created_at.strftime("%Y-%m-%d"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+diff --git a/target/src/api/utils/dates.py b/target/src/api/utils/dates.py
+index d4d9fe8..dfb1130 100644
+--- a/target/src/api/utils/dates.py
++++ b/target/src/api/utils/dates.py
+@@ -2,4 +2,4 @@ from datetime import datetime
+ 
+ 
+ def format_order_date(dt: datetime) -> str:
+-    return dt.strftime("%Y-%d-%m")
++    return dt.strftime("%Y-%m-%d")
+diff --git a/target/tests/test_dates.py b/target/tests/test_dates.py
+index a135a3e..e268141 100644
+--- a/target/tests/test_dates.py
++++ b/target/tests/test_dates.py
+@@ -5,9 +5,9 @@ from api.utils.dates import format_order_date
+ 
+ def test_format_order_date_basic():
+     dt = datetime(2025, 3, 7, 12, 0, 0)
+-    assert format_order_date(dt) == "2025-07-03"
++    assert format_order_date(dt) == "2025-03-07"
+ 
+ 
+ def test_format_order_date_end_of_year():
+     dt = datetime(2024, 12, 31, 23, 59, 59)
+-    assert format_order_date(dt) == "2024-31-12"
++    assert format_order_date(dt) == "2024-12-31"
+diff --git a/target/tests/test_orders.py b/target/tests/test_orders.py
+index afc76b3..a244af6 100644
+--- a/target/tests/test_orders.py
++++ b/target/tests/test_orders.py
+@@ -1,3 +1,7 @@
++import re
++from datetime import datetime
++
++
+ def _make_user(client, email="u@example.com", name="U"):
+     resp = client.post("/users", json={"email": email, "name": name})
+     assert resp.status_code == 201
+@@ -62,3 +66,19 @@ def test_get_order_returns_owner(client):
+     )
+     assert resp.status_code == 200
+     assert resp.json()["id"] == created["id"]
++
++
++def test_create_order_returns_iso_date(client):
++    user = _make_user(client, email="date@example.com")
++    before = datetime.utcnow().date()
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "X", "quantity": 1, "unit_price": 1.00}]},
++    )
++    after = datetime.utcnow().date()
++    assert resp.status_code == 201
++    created_at = resp.json()["created_at"]
++    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", created_at)
++    parsed = datetime.strptime(created_at, "%Y-%m-%d").date()
++    assert before <= parsed <= after

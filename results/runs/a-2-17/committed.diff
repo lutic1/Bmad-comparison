@@ -1,0 +1,241 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..5bec400 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -36,6 +36,7 @@ class Order(Base):
+     items: Mapped[list["OrderItem"]] = relationship(
+         back_populates="order", cascade="all, delete-orphan"
+     )
++    refund: Mapped["Refund | None"] = relationship(back_populates="order", uselist=False)
+ 
+ 
+ class OrderItem(Base):
+@@ -48,3 +49,14 @@ class OrderItem(Base):
+     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
+ 
+     order: Mapped[Order] = relationship(back_populates="items")
++
++
++class Refund(Base):
++    __tablename__ = "refunds"
++
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True, nullable=False)
++    amount: Mapped[int] = mapped_column(Integer, nullable=False)
++    refunded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
++
++    order: Mapped[Order] = relationship(back_populates="refund")
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..061616e 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -5,7 +5,7 @@ from pydantic import BaseModel
+ from sqlalchemy.orm import Session
+ 
+ from api.deps import get_current_user, get_db
+-from api.models import Order, OrderItem, User
++from api.models import Order, OrderItem, Refund, User
+ 
+ router = APIRouter(prefix="/orders", tags=["orders"])
+ 
+@@ -41,6 +41,13 @@ class OrderOut(BaseModel):
+     items: list[OrderItemOut]
+ 
+ 
++class RefundOut(BaseModel):
++    id: int
++    order_id: int
++    amount: int
++    refunded_at: str
++
++
+ @router.post("", response_model=OrderOut, status_code=201)
+ def create_order(
+     payload: OrderCreate,
+@@ -106,6 +113,35 @@ def get_order(
+     )
+ 
+ 
++@router.post("/{order_id}/refund", response_model=RefundOut, status_code=201)
++def refund_order(
++    order_id: int,
++    db: Session = Depends(get_db),
++    user: User = Depends(get_current_user),
++) -> RefundOut:
++    order = db.get(Order, order_id)
++    if order is None:
++        raise HTTPException(status_code=404, detail="order not found")
++    if order.user_id != user.id:
++        raise HTTPException(status_code=403, detail="forbidden")
++    if order.refund is not None:
++        raise HTTPException(status_code=409, detail="order already refunded")
++    if (datetime.utcnow() - order.created_at).days > 30:
++        raise HTTPException(status_code=422, detail="refund window has expired")
++
++    refund = Refund(order_id=order.id, amount=order.total)
++    db.add(refund)
++    db.commit()
++    db.refresh(refund)
++
++    return RefundOut(
++        id=refund.id,
++        order_id=refund.order_id,
++        amount=refund.amount,
++        refunded_at=refund.refunded_at.isoformat(),
++    )
++
++
+ def adjust_total(order: Order, delta_cents: int) -> None:
+     order.total = max(0, order.total + delta_cents)
+ 
+diff --git a/target/tests/test_refunds.py b/target/tests/test_refunds.py
+new file mode 100644
+index 0000000..15433db
+--- /dev/null
++++ b/target/tests/test_refunds.py
+@@ -0,0 +1,90 @@
++from datetime import datetime, timedelta
++
++import pytest
++from fastapi.testclient import TestClient
++from sqlalchemy.orm import Session
++
++from api import deps
++from api.main import app
++from api.models import Base, Order
++
++
++def _make_user(client: TestClient, email: str = "u@example.com") -> int:
++    r = client.post("/users", json={"email": email, "name": "Test"})
++    assert r.status_code == 201
++    return r.json()["id"]
++
++
++def _make_order(client: TestClient, user_id: int) -> int:
++    r = client.post(
++        "/orders",
++        json={"items": [{"sku": "A1", "quantity": 1, "unit_price": 10.0}]},
++        headers={"X-User-Id": str(user_id)},
++    )
++    assert r.status_code == 201
++    return r.json()["id"]
++
++
++def test_refund_success(client):
++    uid = _make_user(client)
++    oid = _make_order(client, uid)
++
++    r = client.post(f"/orders/{oid}/refund", headers={"X-User-Id": str(uid)})
++
++    assert r.status_code == 201
++    body = r.json()
++    assert body["order_id"] == oid
++    assert body["amount"] == 1000
++    assert "id" in body
++    assert "refunded_at" in body
++
++
++def test_refund_missing_auth(client):
++    uid = _make_user(client)
++    oid = _make_order(client, uid)
++
++    r = client.post(f"/orders/{oid}/refund")
++
++    assert r.status_code == 401
++
++
++def test_refund_order_not_found(client):
++    uid = _make_user(client)
++
++    r = client.post("/orders/9999/refund", headers={"X-User-Id": str(uid)})
++
++    assert r.status_code == 404
++
++
++def test_refund_wrong_user(client):
++    uid1 = _make_user(client, "a@example.com")
++    uid2 = _make_user(client, "b@example.com")
++    oid = _make_order(client, uid1)
++
++    r = client.post(f"/orders/{oid}/refund", headers={"X-User-Id": str(uid2)})
++
++    assert r.status_code == 403
++
++
++def test_refund_already_refunded(client):
++    uid = _make_user(client)
++    oid = _make_order(client, uid)
++
++    client.post(f"/orders/{oid}/refund", headers={"X-User-Id": str(uid)})
++    r = client.post(f"/orders/{oid}/refund", headers={"X-User-Id": str(uid)})
++
++    assert r.status_code == 409
++
++
++def test_refund_window_expired(client, db_engine):
++    uid = _make_user(client)
++    oid = _make_order(client, uid)
++
++    with Session(db_engine) as db:
++        order = db.get(Order, oid)
++        order.created_at = datetime.utcnow() - timedelta(days=31)
++        db.commit()
++
++    r = client.post(f"/orders/{oid}/refund", headers={"X-User-Id": str(uid)})
++
++    assert r.status_code == 422

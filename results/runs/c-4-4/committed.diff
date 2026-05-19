@@ -1,0 +1,1306 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/_bmad-output/implementation-artifacts/discount-codes-stories.md b/target/_bmad-output/implementation-artifacts/discount-codes-stories.md
+new file mode 100644
+index 0000000..bae8cf5
+--- /dev/null
++++ b/target/_bmad-output/implementation-artifacts/discount-codes-stories.md
+@@ -0,0 +1,202 @@
++---
++title: Stories — Percentage Discount Codes at Checkout
++status: ready-for-dev
++created: 2026-05-19
++related_prd: ../planning-artifacts/prds/prd-target-2026-05-19/prd.md
++related_design: ../planning-artifacts/architecture/discount-codes-design.md
++---
++
++# Stories — Percentage Discount Codes at Checkout
++
++## Sequencing rationale
++
++This feature is small. Honest split is **two stories**:
++
++1. **S1 — Discount helper module (pure).** No DB, no FastAPI. Pure function. Unit-testable in isolation. Fast feedback loop. Safe to merge as standalone "dead code" because nothing else imports it yet.
++2. **S2 — Wire discount into order flow.** Adds the columns, updates Pydantic models, updates the POST handler, exposes on GET, ships integration tests covering every PRD acceptance criterion.
++
++A third story (e.g. "expose on GET only") would be artificial — `OrderOut` is shared between POST and GET, so AC-6 has to land in S2 anyway. Two stories is the right floor.
++
++Both stories together satisfy PRD AC-1 through AC-9. S1 alone satisfies none of them (it has no callers); S2 alone is not possible without S1 (the helper doesn't exist). Sequence is strict: S1 → S2.
++
++---
++
++## Story S1 — Discount helper module
++
++**Status:** ready-for-dev
++**Estimate:** ~30 minutes of focused work.
++
++**Ready-for-dev brief.**
++Create a new module `src/api/discounts.py` containing the canonical-cased
++`DISCOUNT_CODES` mapping (`SAVE5` → 5, `SAVE10` → 10, `SAVE20` → 20), a small
++`InvalidDiscountCode(ValueError)` sentinel exception, a `normalize_code(raw:
++str) -> str` helper that trims and upper-cases input and raises
++`InvalidDiscountCode` on empty-after-trim, a `resolve_percent(raw: str) ->
++tuple[str, int]` helper that returns the canonical code and percent (raising
++`InvalidDiscountCode` for unknown codes), and an `apply_discount(subtotal_cents:
++int, percent: int) -> tuple[int, int]` function that returns
++`(discounted_total_cents, discount_cents)` using `decimal.Decimal` with
++`ROUND_HALF_UP`. The module must be importable as `from api.discounts import
++...`, must not import from `api.routes` or `api.deps` (no circular deps),
++must use only stdlib (`decimal` is fine; no new dependencies in
++`pyproject.toml`), and must freeze `DISCOUNT_CODES` against accidental
++mutation (`types.MappingProxyType`). Add a companion test file
++`tests/test_discount_helpers.py` that covers the pure-function behaviour:
++each tier returns the right percent, lookup is case-insensitive and
++whitespace-tolerant, unknown / empty / whitespace-only inputs raise
++`InvalidDiscountCode`, and rounding follows half-up at the half-cent boundary
++(e.g. `apply_discount(999, 5) == (949, 50)`, `apply_discount(1000, 10) ==
++(900, 100)`). Do **not** modify `models.py`, `routes/orders.py`, or any other
++file — this story is purely additive. `pytest` must be green at the end.
++
++**Acceptance criteria.**
++
++- **S1-AC-1.** `src/api/discounts.py` exists and exposes `DISCOUNT_CODES`,
++  `InvalidDiscountCode`, `normalize_code`, `resolve_percent`, `apply_discount`.
++- **S1-AC-2.** `DISCOUNT_CODES` is read-only at runtime (mutating it raises).
++- **S1-AC-3.** `normalize_code("  save10  ")` returns `"SAVE10"`.
++- **S1-AC-4.** `normalize_code("")` and `normalize_code("   ")` both raise
++  `InvalidDiscountCode`.
++- **S1-AC-5.** `resolve_percent("Save20")` returns `("SAVE20", 20)`.
++- **S1-AC-6.** `resolve_percent("NOPE")` raises `InvalidDiscountCode`.
++- **S1-AC-7.** `apply_discount(1000, 10) == (900, 100)` (clean tier math).
++- **S1-AC-8.** `apply_discount(999, 5) == (949, 50)` (half-up boundary; the
++  `Decimal` calculation `999 * 5 / 100 == 49.95` rounds to `50`, not `49`).
++- **S1-AC-9.** `apply_discount` always returns two non-negative integers.
++- **S1-AC-10.** No new entries in `pyproject.toml`. Full `pytest` is green.
++
++**Convention gotchas the dev must respect (from the convention sweep):**
++
++- Stdlib only — `Decimal` from `decimal`, `MappingProxyType` from `types`.
++- Module must not import from `api.routes` or `api.models` (keeps it pure
++  and circular-import-safe).
++- No logging, no metrics, no docstrings beyond what already exists in the
++  repo. One short comment is acceptable to name the rounding policy
++  ("half-up via Decimal.quantize") because it's a money invariant.
++- Tests live in `tests/test_discount_helpers.py` (new file). Plain test
++  functions, literal data — match the style in `tests/test_dates.py`. Do
++  not introduce `pytest.mark.parametrize` as a new convention.
++
++---
++
++## Story S2 — Apply discount on order create and surface on read
++
++**Status:** ready-for-dev (blocked by S1)
++**Estimate:** ~60–90 minutes of focused work.
++
++**Ready-for-dev brief.**
++With `api.discounts` in place from S1, wire discounts into the order flow.
++In `src/api/models.py`, add three nullable columns to `Order` using
++SQLAlchemy 2.x `Mapped[Optional[...]]` style: `discount_code:
++Mapped[Optional[str]] = mapped_column(String(32), nullable=True,
++default=None)`, `discount_percent: Mapped[Optional[int]] =
++mapped_column(Integer, nullable=True, default=None)`, and `discount_cents:
++Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)`.
++In `src/api/routes/orders.py`, add an optional `discount_code: str | None =
++None` field to `OrderCreate`; add the three matching nullable fields to
++`OrderOut`; in `create_order`, **resolve and validate the code via
++`resolve_percent` before `db.add(order)` / `db.flush()`** so an invalid
++code returns `HTTPException(400, "invalid discount code")` with zero rows
++written; on a valid code, compute the discounted total via `apply_discount`,
++store the canonical code / percent / discount_cents on the row, and set
++`order.total` to the discounted amount; on a missing code, behaviour is
++byte-identical to today. Update `get_order` so its `OrderOut` construction
++includes the three new fields (do not extract a `_serialize` helper —
++inline duplication is the conventional choice at two call sites; revisit
++extraction only if a third site appears). Do **not** modify
++`OrderCreate`'s extra-field policy, do **not** touch the `%Y-%d-%m`
++date format string, do **not** modify or remove the dead helpers
++(`adjust_total`, `add_item_inline`, `_format_created_at`), and do **not**
++add logging or middleware. Add a new test file `tests/test_discounts.py`
++that uses the existing `client` and `db_engine` fixtures from
++`tests/conftest.py` to cover every PRD acceptance criterion AC-1 through
++AC-9. The full `pytest` suite must be green at the end — including all
++existing tests in `tests/test_orders.py` (AC-1) and `tests/test_dates.py`.
++
++**Acceptance criteria (cited from PRD `prd.md` §5).**
++
++- **S2-AC-1 ⇒ PRD AC-1.** `POST /orders` with no `discount_code` returns the
++  same shape and `total` as before. All existing `tests/test_orders.py`
++  tests pass unmodified.
++- **S2-AC-2 ⇒ PRD AC-2.** One test per tier: `SAVE5`, `SAVE10`, `SAVE20`
++  applied to a known subtotal produce the expected discounted integer
++  `total` in cents.
++- **S2-AC-3 ⇒ PRD AC-3.** Rounding boundary: subtotal `999` cents with
++  `SAVE10` yields `total == 899` and `discount_cents == 100` (half-up
++  rounding of `99.9 → 100`).
++- **S2-AC-4 ⇒ PRD AC-4.** Case-insensitivity: `save10` and `Save10`
++  produce the same result as `SAVE10`; stored `discount_code` is
++  canonical `"SAVE10"`.
++- **S2-AC-5 ⇒ PRD AC-5.** `POST /orders` with `discount_code: "NOPE"`
++  returns `400` and detail `"invalid discount code"`; opening a session
++  from the `db_engine` fixture shows zero new rows in `orders` and zero
++  new rows in `order_items`. Same for `discount_code: ""`.
++- **S2-AC-6 ⇒ PRD AC-6.** `GET /orders/{id}` for an order created with
++  `SAVE20` returns `discount_code: "SAVE20"`, `discount_percent: 20`,
++  `discount_cents: <integer>`; for an order created without a code, all
++  three fields are present in the response body and are exactly `None`
++  (use `body.get("discount_code") is None`, not `"discount_code" not in
++  body`).
++- **S2-AC-7 ⇒ PRD AC-7.** A `POST /orders` request without `X-User-Id`
++  still returns 401. A request with an unknown user id still returns 401.
++- **S2-AC-8 ⇒ PRD AC-8.** Every stored `Order.total` and
++  `Order.discount_cents` value in every test is a non-negative integer.
++- **S2-AC-9 ⇒ PRD AC-9.** `pytest` runs green end-to-end. Do not commit
++  if it isn't.
++
++**Convention gotchas the dev must respect (from the convention sweep):**
++
++- **Validate the code BEFORE `db.add(order)` / `db.flush()`** — mirrors the
++  existing empty-items check. This is what makes S2-AC-5 ("no row
++  written") true.
++- **Catch `InvalidDiscountCode` at the route boundary and raise
++  `HTTPException(400, ...)`.** A bare `InvalidDiscountCode` propagates as
++  HTTP 500 because FastAPI only auto-catches `HTTPException`. Match the
++  existing pattern in `create_order` (it already raises `HTTPException`
++  directly for empty items).
++- **Use `Mapped[Optional[str]]` / `Mapped[Optional[int]]` declarative
++  style.** Raw `Column(...)` is wrong; everything else in `models.py`
++  uses `Mapped[...]` + `mapped_column(...)`.
++- **`OrderOut` is built twice (POST + GET).** Both sites must include the
++  three new fields. Inline duplication is correct here — do not extract
++  a `_serialize` helper.
++- **Money I/O stays asymmetric.** Discount input is the code string only;
++  output exposes `discount_cents` as an integer (no float dollars on
++  output). Matches the existing `OrderItemIn.unit_price: float` (in) →
++  `OrderItemOut.unit_price: int` (out) shape.
++- **`OrderCreate` keeps Pydantic v2 default (extra fields ignored).** Do
++  not add `model_config = ConfigDict(extra="forbid")` — that is a
++  breaking contract change for existing callers and is out of scope.
++- **Do not touch `_to_cents` or `add_item_inline`** — three rounding
++  policies coexist by design. The new policy (half-up) lives only in
++  `apply_discount`.
++- **Do not touch the `%Y-%d-%m` date format string** anywhere — bug is
++  pinned by `tests/test_dates.py`. New `OrderOut` construction must pass
++  `created_at` through the same buggy path unchanged.
++- **No new fixtures in `conftest.py`.** Build a session inline from
++  `db_engine` when you need to assert "no row written".
++- **Keep the route fully synchronous.** No `asyncio.create_task`;
++  `StaticPool` in-memory SQLite does not survive thread boundaries in
++  tests.
++- **Operator note in the PR description:** `app.db` must be deleted before
++  restart so the new columns materialize via `Base.metadata.create_all`
++  (no migrations, per `CLAUDE.md`).
++
++---
++
++## What this stories file does not cover
++
++- No admin endpoint, no expiry, no usage limits, no stacking, no caps
++  (PRD non-goals §3). Do not infer these from "while you're here".
++- No fix for the `%Y-%d-%m` date bug. Separate work.
++- No consolidation of the three cents-conversion helpers. Separate work.
++- No removal of the dead helpers in `routes/orders.py`. Separate work.
++
++---
++
++## Handoff
++
++S1 and S2 are both `ready-for-dev`. Execute in order: S1 first (it is
++self-contained and unblocks S2), then S2 (which has every PRD acceptance
++criterion mapped). Dev agent (`bmad-agent-dev` / Amelia) should pick up S1
++now.
+diff --git a/target/_bmad-output/planning-artifacts/architecture/discount-codes-design.md b/target/_bmad-output/planning-artifacts/architecture/discount-codes-design.md
+new file mode 100644
+index 0000000..ff6d678
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/architecture/discount-codes-design.md
+@@ -0,0 +1,306 @@
++---
++title: Technical Design — Percentage Discount Codes at Checkout
++status: draft
++created: 2026-05-19
++updated: 2026-05-19
++related_prd: ../prds/prd-target-2026-05-19/prd.md
++---
++
++# Technical Design — Percentage Discount Codes at Checkout
++
++## 0. Scope
++
++This document is the implementation-shaped companion to the PRD at
++`../prds/prd-target-2026-05-19/prd.md`. It identifies which files change and
++how, names the small set of decisions that the PRD left open, and stops
++there. Story breakdown and test code live downstream.
++
++## 1. Decisions on PRD Open Questions
++
++The PRD listed five open questions. Resolving them up front so the developer
++has an unambiguous target. These are tradeoffs, not verdicts — call out any
++you disagree with before implementation starts.
++
++1. **Rounding policy → half-up via `decimal.Decimal`** (PRD OQ-1).
++   The codebase already uses integer-cents math; the only fractional moment is
++   the percentage multiply. Banker's rounding (Python's `round`) surprises
++   readers expecting retail half-up, and is a real footgun for finance review
++   later. Cost is one stdlib import. Use:
++   `int((Decimal(subtotal_cents) * Decimal(100 - percent) / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))`.
++   No third-party dependency — `decimal` is stdlib, which satisfies `CLAUDE.md`.
++
++2. **Empty-string handling → invalid, returns 400** (PRD OQ-2).
++   Treating `""` as "no code" silently swallows a typo where the client meant
++   to send a real code and forgot to populate it. Strict rejection is the
++   defensive default. Pydantic field validator on the request model handles
++   this cleanly.
++
++3. **Code strings → `SAVE5`, `SAVE10`, `SAVE20`** (PRD OQ-3).
++   Use the PRD placeholders as the literal strings. If marketing needs
++   different strings later, it is a one-line change to the constant. Codes
++   live in a module-level dict keyed by canonical (upper-case) form.
++
++4. **Schema shape → two columns on `orders`, no separate table** (PRD OQ-4).
++   The PRD's non-goals rule out usage limits, expiry, and stacking. Per the
++   project's "no abstractions for a single call site" rule (`CLAUDE.md`),
++   adding `Order.discount_code` and `Order.discount_percent` is the right
++   shape today. If v2 introduces per-user limits or stacking, that is the
++   Rule-of-Three moment to extract a `discounts` table — not now.
++
++5. **Persist `discount_cents` for audit → yes** (PRD OQ-5).
++   The cost is one integer column; the benefit is that historical orders
++   keep their truth even if we change rounding policy or the percentage
++   mapping later. Concretely the column lets `total + discount_cents =
++   subtotal_cents` hold as an invariant on every row, which is a much
++   cleaner audit story than "recompute from `discount_percent` and hope the
++   helper hasn't drifted." This is a write-once value — no extra logic in
++   the read path beyond surfacing it.
++
++## 2. File-Level Change List
++
++| File                                  | Change            | Why                                                                 |
++| ------------------------------------- | ----------------- | ------------------------------------------------------------------- |
++| `src/api/models.py`                   | Modify            | Add three nullable columns to `Order`.                              |
++| `src/api/routes/orders.py`            | Modify            | Accept code on create; apply discount; surface on read; reject bad. |
++| `src/api/discounts.py`                | **New**           | Constant map + `apply_discount` helper. One file, ~30 lines.        |
++| `tests/test_discounts.py`             | **New**           | All PRD acceptance criteria. Uses existing `client` fixture.        |
++| `tests/test_orders.py`                | No change         | AC-1 requires existing tests pass unmodified.                       |
++| `src/api/deps.py`, `main.py`, etc.    | No change         | No new dependencies, routers, middleware, or auth changes.          |
++| `pyproject.toml`                      | No change         | Stdlib `decimal` only.                                              |
++
++That is the entire surface area. Five files touched, two new.
++
++## 3. Module Design
++
++### 3.1 `src/api/discounts.py` (new)
++
++A small module that owns *all* discount logic. The route module imports from
++here; nothing else does. This keeps the route handler readable and gives the
++test suite something focused to target.
++
++```python
++from decimal import Decimal, ROUND_HALF_UP
++
++# Canonical-cased codes. Mapping is the single source of truth.
++DISCOUNT_CODES: dict[str, int] = {
++    "SAVE5": 5,
++    "SAVE10": 10,
++    "SAVE20": 20,
++}
++
++
++class InvalidDiscountCode(ValueError):
++    """Raised when a non-null code does not match a known entry."""
++
++
++def normalize_code(raw: str) -> str:
++    """Trim + upper-case. Empty (after trim) raises InvalidDiscountCode."""
++    code = raw.strip().upper()
++    if not code:
++        raise InvalidDiscountCode("empty discount code")
++    return code
++
++
++def resolve_percent(raw: str) -> tuple[str, int]:
++    """Return (canonical_code, percent). Raises InvalidDiscountCode."""
++    code = normalize_code(raw)
++    if code not in DISCOUNT_CODES:
++        raise InvalidDiscountCode(f"unknown code: {code}")
++    return code, DISCOUNT_CODES[code]
++
++
++def apply_discount(subtotal_cents: int, percent: int) -> tuple[int, int]:
++    """Return (discounted_total_cents, discount_cents). Half-up rounding."""
++    discount = (
++        Decimal(subtotal_cents) * Decimal(percent) / Decimal(100)
++    ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
++    discount_cents = int(discount)
++    return subtotal_cents - discount_cents, discount_cents
++```
++
++Design notes:
++- `tuple[str, int]` return on `resolve_percent` so the route can store the
++  canonical (upper-case, trimmed) form regardless of what the client sent.
++- `InvalidDiscountCode` is a small sentinel exception. The route catches it
++  and re-raises as `HTTPException(400)`. Keeping HTTP concerns out of
++  `discounts.py` keeps the helper unit-testable without spinning up
++  FastAPI.
++- No global state, no I/O, no DB. Pure function module.
++
++### 3.2 `src/api/models.py` (modify)
++
++Add three columns to `Order`. All nullable so existing orders (and orders
++created without a code) work without backfill — which matters because the
++project drops and recreates the DB between runs but does not migrate.
++
++```python
++class Order(Base):
++    __tablename__ = "orders"
++    # ... existing columns ...
++    discount_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
++    discount_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
++    discount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
++```
++
++Three columns, all nullable, default `None`. No relationship changes, no
++new tables.
++
++### 3.3 `src/api/routes/orders.py` (modify)
++
++Three touch points: request model, response model, handler body.
++
++```python
++from api.discounts import InvalidDiscountCode, apply_discount, resolve_percent
++
++class OrderCreate(BaseModel):
++    items: list[OrderItemIn]
++    discount_code: str | None = None  # NEW
++
++class OrderOut(BaseModel):
++    id: int
++    user_id: int
++    total: int
++    discount_code: str | None        # NEW
++    discount_percent: int | None     # NEW
++    discount_cents: int | None       # NEW
++    created_at: str
++    items: list[OrderItemOut]
++```
++
++Handler change (sketch — keep style identical to existing code):
++
++```python
++@router.post("", response_model=OrderOut, status_code=201)
++def create_order(payload, db, user):
++    if not payload.items:
++        raise HTTPException(400, "order must have at least one item")
++
++    # Resolve discount BEFORE writing anything, so an invalid code
++    # leaves zero rows behind (AC-5).
++    discount_code: str | None = None
++    discount_percent: int | None = None
++    if payload.discount_code is not None:
++        try:
++            discount_code, discount_percent = resolve_percent(payload.discount_code)
++        except InvalidDiscountCode:
++            raise HTTPException(400, "invalid discount code")
++
++    order = Order(user_id=user.id, total=0)
++    db.add(order)
++    db.flush()
++
++    subtotal = 0
++    for item in payload.items:
++        unit_price_cents = _to_cents(item.unit_price)
++        db.add(OrderItem(order_id=order.id, sku=item.sku,
++                         quantity=item.quantity, unit_price=unit_price_cents))
++        subtotal += unit_price_cents * item.quantity
++
++    if discount_percent is not None:
++        total, discount_cents = apply_discount(subtotal, discount_percent)
++    else:
++        total, discount_cents = subtotal, None
++
++    order.total = total
++    order.discount_code = discount_code
++    order.discount_percent = discount_percent
++    order.discount_cents = discount_cents
++
++    db.commit()
++    db.refresh(order)
++    return _serialize(order)  # OrderOut with new fields included
++```
++
++Key correctness points:
++- Validation **before** any `db.flush`-bearing work so AC-5 ("no order
++  written") holds. The existing empty-items check already follows this
++  pattern, so the new check sits next to it.
++- `_to_cents` and the per-item loop stay byte-identical so existing tests
++  pass unchanged (AC-1).
++- `_serialize` / `OrderOut` construction is centralized to avoid the
++  current duplication between `create_order` and `get_order`. *This is a
++  small in-place tidy, not a refactor — both functions are already
++  building the same shape, and we'd otherwise be duplicating the three
++  new fields in two places. Acceptable per Rule of Three (the new fields
++  push us to three call sites that need them — POST response, GET
++  response, and the implicit "they have to match" constraint).* If you
++  prefer to keep both inline (and copy-paste the three new fields), say
++  so before implementation.
++
++### 3.4 `tests/test_discounts.py` (new)
++
++One test per PRD acceptance criterion. Uses the existing `client` fixture
++from `tests/conftest.py` (in-memory SQLite per test). Suggested test
++names — fill in bodies during implementation:
++
++- `test_no_code_unchanged_behaviour` — AC-1
++- `test_save5_applied` / `test_save10_applied` / `test_save20_applied` — AC-2
++- `test_rounding_half_up_on_fractional_cent` — AC-3 (subtotal `999` +
++  `SAVE10` → `total == 899`, `discount_cents == 100`; half-up gives `100`
++  not `99`)
++- `test_code_is_case_insensitive` — AC-4 (`save10`, `Save10`)
++- `test_invalid_code_returns_400_and_writes_nothing` — AC-5 (assert
++  `db.query(Order).count() == 0` after the failing POST; needs a small
++  db-session fixture or use a follow-up `GET` round-trip)
++- `test_get_order_returns_discount_fields` — AC-6
++- `test_missing_x_user_id_still_401` — AC-7 (regression guard)
++- `test_total_is_non_negative_integer` — AC-8 (covered implicitly by
++  other tests but worth a dedicated assertion)
++
++AC-9 ("pytest is green") is the gate, not a test. The full suite must
++pass.
++
++## 4. Behavior Notes for the Implementer
++
++- **Read existing patterns first.** `routes/orders.py` is small; mimic
++  its style (Pydantic models at top, handler below, helpers underneath).
++  No new logging, middleware, or metrics — `CLAUDE.md` rules them out.
++- **Don't touch unrelated code.** The `_format_created_at` /
++  `add_item_inline` / `adjust_total` helpers at the bottom of
++  `orders.py` are unused by the spec; leave them. The `created_at`
++  format string in the existing code (`"%Y-%d-%m"`, which is wrong) is
++  also out of scope — flagged for separate work.
++- **No `X-Discount-Code` header.** The PRD specifies a body field; do
++  not invent an alternative transport.
++- **Empty string / whitespace.** `OrderCreate.discount_code` is typed
++  `str | None = None`. `normalize_code` raises on empty-after-trim, so
++  `""` and `"   "` both produce 400, matching FR-4.
++
++## 5. What This Design Does *Not* Do
++
++Explicit so nobody adds them in passing:
++
++- No new tables, no new endpoints, no admin UI.
++- No `/discounts` listing route.
++- No discount on order *update* (there is no update endpoint).
++- No discount on refund (no refund endpoint).
++- No event emission, audit log row, or external notification.
++- No caching of `DISCOUNT_CODES` — it's a dict literal, already fast.
++- No idempotency keys, no rate limiting on the new field.
++- No change to auth (still `X-User-Id`).
++
++## 6. Risks and Trade-offs
++
++- **Rounding choice (half-up) ≠ Python default.** Anyone reading
++  `apply_discount` for the first time may expect banker's rounding from
++  `round()`. The use of `Decimal.quantize(ROUND_HALF_UP)` is explicit
++  enough to defuse this, but a one-line comment naming the policy is
++  worth it. (This is the one exception to "no comments" — it documents
++  a money invariant, which is the WHY case `CLAUDE.md` allows.)
++- **Three nullable columns vs. one nullable FK to a `discounts` table.**
++  Two-column shape is right for v1 (Rule of Three) but accumulates a
++  small migration cost if v2 ships stacking or usage limits. Accepted —
++  the alternative is a four-row table and a join from day one for no
++  current benefit.
++- **`discount_cents` is a write-once denormalization.** If
++  `DISCOUNT_CODES` ever changes a percentage value, historical orders
++  preserve their original applied amount. That's the intended behaviour
++  (audit), but it does mean `discount_percent` and `DISCOUNT_CODES[code]`
++  may disagree for old rows. Acceptable; flagging so it doesn't surprise
++  during review.
++- **No DB constraint enforcing `total + discount_cents == subtotal`.**
++  We don't store subtotal, so we can't. Invariant lives in code only.
++
++---
++
++ready for next handoff
+diff --git a/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/.decision-log.md b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/.decision-log.md
+new file mode 100644
+index 0000000..5aee693
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/.decision-log.md
+@@ -0,0 +1,29 @@
++# Decision Log — Percentage Discount Codes at Checkout
++
++Created 2026-05-19.
++
++## 2026-05-19 — Mode
++
++- **Decision:** Fast path, single-pass draft, no coaching ritual, no reviewer gate.
++- **Why:** Tiny scope (single feature, three constants). User supplied a fully-formed request with the four required sections explicitly named. Stakes calibration: internal/toy service. Length target ~2 pages.
++- **Override:** Skipped Discovery brain-dump, research subagents, reviewer-gate dispatch, and external handoffs. Acceptable for a feature of this size on a service with no real users.
++
++## 2026-05-19 — Section labels
++
++- **Decision:** Used the user-requested headings (Goals, Non-Goals, Acceptance Criteria, Open Questions) as load-bearing sections rather than the template's default labels (Vision / FR consequences / Open Questions).
++- **Why:** User explicitly named these sections in the request. Goals replaces a long Vision; Acceptance Criteria is rolled up from per-FR consequences and called out as a dedicated section for the architect's convenience.
++
++## 2026-05-19 — Assumptions left inline
++
++- **Decision:** Banker's rounding, empty-string-is-invalid, whitespace-trim, code strings `SAVE5/10/20` all tagged `[ASSUMPTION]` and surfaced as Open Questions rather than resolved.
++- **Why:** No stakeholder present in the run. Surfacing as questions is safer than freezing without confirmation.
++
++## 2026-05-19 — Schema shape
++
++- **Decision:** Suggested two columns on `orders` (`discount_code`, `discount_percent`) rather than a separate `discounts` table.
++- **Why:** Matches project conventions in `CLAUDE.md` (no abstractions for a single call site; no migrations; columns added directly to the model). Open Question 4 flags the future-stacking case for the architect.
++
++## 2026-05-19 — Finalize
++
++- **Decision:** Status remains `draft`, not `final`. Skipped the full Finalize ceremony (reviewer gate, input reconciliation, polish).
++- **Why:** Headless-style one-shot. The architect is the next gate; they can come back with corrections. Promoting to `final` without that pass would misrepresent the artifact's state.
+diff --git a/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md
+new file mode 100644
+index 0000000..9af43c2
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md
+@@ -0,0 +1,204 @@
++---
++title: Percentage Discount Codes at Checkout
++status: draft
++created: 2026-05-19
++updated: 2026-05-19
++---
++
++# PRD: Percentage Discount Codes at Checkout
++
++## 0. Document Purpose
++
++This PRD specifies a small feature for the existing FastAPI users/orders service:
++the ability for a user to apply a percentage discount code when creating an
++order. It is scoped to a single feature, deliberately tight, and intended as
++direct input to the architect and the developer. Downstream readers should
++treat the four headline sections (Goals, Non-Goals, Acceptance Criteria, Open
++Questions) as load-bearing; everything else is supporting context.
++
++## 1. Vision
++
++Customers placing an order through `POST /orders` should be able to redeem a
++short, human-typed code (e.g. `SAVE10`) that knocks a fixed percentage off the
++order total. The service supports exactly three discount tiers — 5%, 10%, and
++20% — and stores the resulting order at the discounted total. The change is
++small in surface area but materially changes a money-bearing endpoint, so the
++behaviour around rounding, validation, and persistence has to be unambiguous.
++
++## 2. Goals
++
++1. Let a caller pass a discount code on order creation and have the order
++   total reduced by the corresponding percentage (5%, 10%, or 20%).
++2. Persist the discount applied to each order so it is recoverable on
++   `GET /orders/{id}` and auditable later.
++3. Reject invalid, unknown, or malformed codes with a clear 4xx response and
++   leave no order written.
++4. Ship behind regression tests that cover the happy path, each tier, the
++   rejection path, and the rounding boundary.
++5. Preserve the existing money-in-cents invariant — the stored `total` remains
++   an integer number of cents.
++
++## 3. Non-Goals
++
++- **No code management UI or admin API.** The three codes are configured
++  in-code (or in a small constant table) for v1. No create/list/revoke
++  endpoints.
++- **No per-user or per-order usage limits.** A code can be redeemed
++  arbitrarily many times by the same or different users in v1.
++- **No expiry / start dates / scheduling.** Codes are either active or
++  removed from the constant; there is no time window logic.
++- **No stacking.** At most one code per order. Multiple codes is out of scope.
++- **No fixed-amount discounts, free-shipping codes, BOGO, or category-scoped
++  discounts.** Percentage-off whole order only.
++- **No minimum order value / maximum discount cap.** v1 applies the percentage
++  unconditionally to whatever the order total is.
++- **No refund / partial-refund recalculation.** Refund flow does not exist in
++  the service today and is not being added.
++- **No analytics, metrics, or logging beyond what the rest of the service
++  already does.** (Per `CLAUDE.md`.)
++- **No new third-party dependencies.** Stdlib + existing stack only.
++- **No migrations.** Schema is rebuilt from `Base.metadata` between runs
++  per the project's stated convention; new columns are added directly to the
++  model.
++
++## 4. Feature
++
++### 4.1 Apply discount code on order creation
++
++**Description.** `POST /orders` accepts an optional `discount_code` field on
++the request body. When present and recognized, the server computes a
++discounted total, persists the order at that total, and records which code
++was applied and what percentage it represented. When present and not
++recognized (or otherwise invalid), the server returns `400` and writes no
++order. When absent, behaviour is identical to today.
++
++**Functional Requirements**
++
++#### FR-1: Accept an optional discount code on order creation
++A caller can include `discount_code: string | null` on the `POST /orders`
++body. Omitting the field, or sending `null`, behaves exactly as the current
++endpoint does today.
++
++**Consequences (testable):**
++- Existing tests in `tests/test_orders.py` continue to pass without change.
++- A request body with no `discount_code` field returns the same `OrderOut`
++  shape and `total` as before the change.
++
++#### FR-2: Recognize the three valid codes
++The service recognizes exactly three codes mapped to fixed percentages.
++Codes are case-insensitive on input but stored canonical-cased.
++
++**Consequences (testable):**
++- `SAVE5` → 5%, `SAVE10` → 10%, `SAVE20` → 20% are accepted.
++  *[ASSUMPTION: literal code strings — confirm with stakeholder before
++  freezing user-visible strings.]*
++- Lower- and mixed-case variants (`save10`, `Save10`) are accepted and
++  treated identically to the canonical form.
++- The mapping lives in a single module-level constant; adding or removing
++  a tier is a one-line code change.
++
++#### FR-3: Compute and persist the discounted total
++For a valid code, the stored `Order.total` equals
++`round_half_even(subtotal_cents * (100 - percent) / 100)`, where
++`subtotal_cents` is the same sum-of-line-items the endpoint computes today.
++
++**Consequences (testable):**
++- For a subtotal of `1000` cents and code `SAVE10`, stored `total` is `900`.
++- For a subtotal of `999` cents and code `SAVE10`, stored `total` is `899`
++  (banker's rounding: `899.1` → `899`).
++  *[ASSUMPTION: banker's rounding (Python `round` default) is acceptable.
++  Confirm if half-up is required for finance/legal reasons — see Open
++  Question 1.]*
++- `total` remains a non-negative integer number of cents.
++- Line item `unit_price` values are stored unchanged — the discount is
++  applied at the order level, not per line.
++
++#### FR-4: Reject unknown or malformed codes
++Any non-null `discount_code` that does not match a recognized entry (after
++case-folding) causes a `400 Bad Request` with body
++`{"detail": "invalid discount code"}`. No order, and no order items, are
++written.
++
++**Consequences (testable):**
++- `discount_code: "NOPE"` → 400, no row inserted into `orders` or
++  `order_items`.
++- `discount_code: ""` (empty string) → 400.
++  *[ASSUMPTION: empty string is treated as invalid rather than as "no
++  code". Confirm — see Open Question 2.]*
++- `discount_code: "   SAVE10  "` is accepted (leading/trailing whitespace
++  trimmed). *[ASSUMPTION — confirm with stakeholder.]*
++
++#### FR-5: Expose the applied discount on the order
++`GET /orders/{id}` and the `POST /orders` response surface which code (if
++any) was applied and the resulting percentage, so a caller can render
++"You saved 10%".
++
++**Consequences (testable):**
++- `OrderOut` includes two new fields: `discount_code: string | null` and
++  `discount_percent: int | null`. Both are `null` when no code was applied.
++- A round-trip (create then get) returns the same `discount_code` and
++  `discount_percent` originally supplied.
++
++## 5. Acceptance Criteria
++
++The feature is accepted when **all** of the following are true and ship
++with regression tests in `tests/`:
++
++- **AC-1 (no code, unchanged behaviour):** `POST /orders` without a
++  `discount_code` field returns the same shape and `total` as today.
++  Existing `test_orders.py` tests pass unmodified.
++- **AC-2 (each tier applies correctly):** for a known subtotal, applying
++  `SAVE5`, `SAVE10`, and `SAVE20` each produces the expected discounted
++  `total` in cents. One test per tier.
++- **AC-3 (rounding boundary):** a subtotal chosen to force a fractional
++  cent (e.g. `999 * SAVE10`) rounds per FR-3 and stores an integer
++  `total`. Test asserts the exact integer.
++- **AC-4 (case-insensitive input):** `save10` and `Save10` produce the
++  same result as `SAVE10`.
++- **AC-5 (invalid code rejected, no side effects):** an unknown code
++  returns `400` and the database contains zero new orders and zero new
++  order items afterwards.
++- **AC-6 (read path exposes discount):** `GET /orders/{id}` for an order
++  created with `SAVE20` returns `discount_code: "SAVE20"` and
++  `discount_percent: 20`. For an order created with no code, both fields
++  are `null`.
++- **AC-7 (auth boundary preserved):** the existing `X-User-Id` /
++  `get_current_user` rules still gate the endpoint; a missing or invalid
++  header behaves exactly as today.
++- **AC-8 (cents invariant):** stored `Order.total` is always a
++  non-negative integer for every test above.
++- **AC-9 (`pytest` is green):** the full test suite passes. Per
++  `CLAUDE.md`, the change does not ship if `pytest` is failing.
++
++## 6. Open Questions
++
++1. **Rounding policy.** FR-3 uses banker's rounding (Python's built-in
++   `round`). Most retail finance uses half-up. Which is required?
++   Decision needed before architect freezes the math helper.
++2. **Empty string handling.** Should `discount_code: ""` be treated as
++   "no code applied" (current `null` semantics) or as an invalid code
++   (current FR-4 assumption)? The latter is stricter and surfaces typos.
++3. **Code strings.** Are `SAVE5` / `SAVE10` / `SAVE20` the actual codes
++   marketing wants, or placeholders? Codes are user-visible.
++4. **Future stacking / per-user limits.** Non-goals today, but if v2 is
++   already planned the architect may want to leave room in the schema
++   (e.g. discount lives on a row with a foreign key rather than two
++   columns on `orders`). Worth a 30-second conversation.
++5. **Auditability.** Should we persist the *cents* discount amount
++   (`discount_cents`) alongside the percent, so historical reporting
++   doesn't have to recompute against possibly-changed mappings? Cheap
++   to add now, expensive to backfill later.
++
++## 7. Assumptions Index
++
++- FR-2: code strings `SAVE5` / `SAVE10` / `SAVE20` are placeholders pending
++  marketing confirmation (Open Question 3).
++- FR-3: banker's rounding via Python `round` is acceptable (Open Question 1).
++- FR-4: empty string is invalid, not equivalent to omission (Open Question 2).
++- FR-4: leading/trailing whitespace is trimmed before lookup.
++- Section 3: no admin endpoint, no expiry, no stacking, no caps — v1 ships
++  with the three codes hard-coded in a constant.
++
++---
++
++ready for architect handoff
+diff --git a/target/src/api/discounts.py b/target/src/api/discounts.py
+new file mode 100644
+index 0000000..c816980
+--- /dev/null
++++ b/target/src/api/discounts.py
+@@ -0,0 +1,37 @@
++from decimal import Decimal, ROUND_HALF_UP
++from types import MappingProxyType
++
++# Half-up rounding via Decimal: money invariant, not Python's banker's default.
++DISCOUNT_CODES: MappingProxyType[str, int] = MappingProxyType(
++    {
++        "SAVE5": 5,
++        "SAVE10": 10,
++        "SAVE20": 20,
++    }
++)
++
++
++class InvalidDiscountCode(ValueError):
++    """Raised when a non-null code does not match a known entry."""
++
++
++def normalize_code(raw: str) -> str:
++    code = raw.strip().upper()
++    if not code:
++        raise InvalidDiscountCode("empty discount code")
++    return code
++
++
++def resolve_percent(raw: str) -> tuple[str, int]:
++    code = normalize_code(raw)
++    if code not in DISCOUNT_CODES:
++        raise InvalidDiscountCode(f"unknown code: {code}")
++    return code, DISCOUNT_CODES[code]
++
++
++def apply_discount(subtotal_cents: int, percent: int) -> tuple[int, int]:
++    discount = (
++        Decimal(subtotal_cents) * Decimal(percent) / Decimal(100)
++    ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
++    discount_cents = int(discount)
++    return subtotal_cents - discount_cents, discount_cents
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..4fd8295 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -28,6 +28,15 @@ class Order(Base):
+     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+     # Stored as integer cents. See _to_cents in routes/orders.py.
+     total: Mapped[int] = mapped_column(Integer, nullable=False)
++    discount_code: Mapped[str | None] = mapped_column(
++        String(32), nullable=True, default=None
++    )
++    discount_percent: Mapped[int | None] = mapped_column(
++        Integer, nullable=True, default=None
++    )
++    discount_cents: Mapped[int | None] = mapped_column(
++        Integer, nullable=True, default=None
++    )
+     created_at: Mapped[datetime] = mapped_column(
+         DateTime, default=datetime.utcnow, nullable=False
+     )
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..e6491c5 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -5,6 +5,7 @@ from pydantic import BaseModel
+ from sqlalchemy.orm import Session
+ 
+ from api.deps import get_current_user, get_db
++from api.discounts import InvalidDiscountCode, apply_discount, resolve_percent
+ from api.models import Order, OrderItem, User
+ 
+ router = APIRouter(prefix="/orders", tags=["orders"])
+@@ -22,6 +23,7 @@ class OrderItemIn(BaseModel):
+ 
+ class OrderCreate(BaseModel):
+     items: list[OrderItemIn]
++    discount_code: str | None = None
+ 
+ 
+ class OrderItemOut(BaseModel):
+@@ -37,6 +39,9 @@ class OrderOut(BaseModel):
+     id: int
+     user_id: int
+     total: int
++    discount_code: str | None
++    discount_percent: int | None
++    discount_cents: int | None
+     created_at: str
+     items: list[OrderItemOut]
+ 
+@@ -50,11 +55,20 @@ def create_order(
+     if not payload.items:
+         raise HTTPException(status_code=400, detail="order must have at least one item")
+ 
++    # Validate discount BEFORE writing anything so an invalid code leaves zero rows.
++    discount_code: str | None = None
++    discount_percent: int | None = None
++    if payload.discount_code is not None:
++        try:
++            discount_code, discount_percent = resolve_percent(payload.discount_code)
++        except InvalidDiscountCode:
++            raise HTTPException(status_code=400, detail="invalid discount code")
++
+     order = Order(user_id=user.id, total=0)
+     db.add(order)
+     db.flush()
+ 
+-    total = 0
++    subtotal = 0
+     for item in payload.items:
+         unit_price_cents = _to_cents(item.unit_price)
+         line = OrderItem(
+@@ -64,9 +78,17 @@ def create_order(
+             unit_price=unit_price_cents,
+         )
+         db.add(line)
+-        total += unit_price_cents * item.quantity
++        subtotal += unit_price_cents * item.quantity
++
++    if discount_percent is not None:
++        total, discount_cents = apply_discount(subtotal, discount_percent)
++    else:
++        total, discount_cents = subtotal, None
+ 
+     order.total = total
++    order.discount_code = discount_code
++    order.discount_percent = discount_percent
++    order.discount_cents = discount_cents
+     db.commit()
+     db.refresh(order)
+ 
+@@ -74,6 +96,9 @@ def create_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
++        discount_code=order.discount_code,
++        discount_percent=order.discount_percent,
++        discount_cents=order.discount_cents,
+         created_at=order.created_at.strftime("%Y-%d-%m"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+@@ -98,6 +123,9 @@ def get_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
++        discount_code=order.discount_code,
++        discount_percent=order.discount_percent,
++        discount_cents=order.discount_cents,
+         created_at=order.created_at.strftime("%Y-%d-%m"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+diff --git a/target/tests/test_discount_helpers.py b/target/tests/test_discount_helpers.py
+new file mode 100644
+index 0000000..f257d61
+--- /dev/null
++++ b/target/tests/test_discount_helpers.py
+@@ -0,0 +1,80 @@
++import pytest
++
++from api.discounts import (
++    DISCOUNT_CODES,
++    InvalidDiscountCode,
++    apply_discount,
++    normalize_code,
++    resolve_percent,
++)
++
++
++def test_codes_exposed():
++    assert "SAVE5" in DISCOUNT_CODES
++    assert "SAVE10" in DISCOUNT_CODES
++    assert "SAVE20" in DISCOUNT_CODES
++    assert DISCOUNT_CODES["SAVE5"] == 5
++    assert DISCOUNT_CODES["SAVE10"] == 10
++    assert DISCOUNT_CODES["SAVE20"] == 20
++
++
++def test_codes_are_read_only():
++    with pytest.raises(TypeError):
++        DISCOUNT_CODES["SAVE99"] = 99  # type: ignore[index]
++
++
++def test_normalize_code_trims_and_uppercases():
++    assert normalize_code("  save10  ") == "SAVE10"
++    assert normalize_code("Save20") == "SAVE20"
++    assert normalize_code("SAVE5") == "SAVE5"
++
++
++def test_normalize_code_empty_raises():
++    with pytest.raises(InvalidDiscountCode):
++        normalize_code("")
++
++
++def test_normalize_code_whitespace_only_raises():
++    with pytest.raises(InvalidDiscountCode):
++        normalize_code("   ")
++
++
++def test_resolve_percent_canonicalizes():
++    assert resolve_percent("save10") == ("SAVE10", 10)
++    assert resolve_percent("Save20") == ("SAVE20", 20)
++    assert resolve_percent("  SAVE5 ") == ("SAVE5", 5)
++
++
++def test_resolve_percent_unknown_raises():
++    with pytest.raises(InvalidDiscountCode):
++        resolve_percent("NOPE")
++
++
++def test_resolve_percent_empty_raises():
++    with pytest.raises(InvalidDiscountCode):
++        resolve_percent("")
++
++
++def test_apply_discount_clean_tier_math():
++    assert apply_discount(1000, 10) == (900, 100)
++    assert apply_discount(2000, 20) == (1600, 400)
++    assert apply_discount(1000, 5) == (950, 50)
++
++
++def test_apply_discount_half_up_boundary():
++    # 999 * 5 / 100 = 49.95 → half-up rounds to 50 (banker's would give 50 too here,
++    # but the deliberate case: any .5 boundary must round up, not to-even).
++    assert apply_discount(999, 5) == (949, 50)
++
++
++def test_apply_discount_half_up_explicit_half_cent():
++    # 10 * 5 / 100 = 0.5 → half-up = 1 (banker's `round` would give 0).
++    assert apply_discount(10, 5) == (9, 1)
++
++
++def test_apply_discount_returns_non_negative_integers():
++    total, discount = apply_discount(0, 20)
++    assert total == 0
++    assert discount == 0
++    assert isinstance(total, int)
++    assert isinstance(discount, int)
+diff --git a/target/tests/test_discounts.py b/target/tests/test_discounts.py
+new file mode 100644
+index 0000000..a5ec0d4
+--- /dev/null
++++ b/target/tests/test_discounts.py
+@@ -0,0 +1,240 @@
++from sqlalchemy.orm import sessionmaker
++
++from api.models import Order, OrderItem
++
++
++def _make_user(client, email="d@example.com", name="D"):
++    resp = client.post("/users", json={"email": email, "name": name})
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def test_no_code_unchanged_behaviour(client):
++    """PRD AC-1 — without discount_code, total matches today's behaviour."""
++    user = _make_user(client, email="nocode@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "WIDGET", "quantity": 2, "unit_price": 9.99}]},
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 1998
++    assert body.get("discount_code") is None
++    assert body.get("discount_percent") is None
++    assert body.get("discount_cents") is None
++
++
++def test_save5_applied(client):
++    """PRD AC-2 — SAVE5 on a $10.00 subtotal yields 950 cents."""
++    user = _make_user(client, email="s5@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "SAVE5",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 950
++    assert body["discount_code"] == "SAVE5"
++    assert body["discount_percent"] == 5
++    assert body["discount_cents"] == 50
++
++
++def test_save10_applied(client):
++    """PRD AC-2 — SAVE10 on a $10.00 subtotal yields 900 cents."""
++    user = _make_user(client, email="s10@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "SAVE10",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 900
++    assert body["discount_code"] == "SAVE10"
++    assert body["discount_percent"] == 10
++    assert body["discount_cents"] == 100
++
++
++def test_save20_applied(client):
++    """PRD AC-2 — SAVE20 on a $10.00 subtotal yields 800 cents."""
++    user = _make_user(client, email="s20@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "SAVE20",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 800
++    assert body["discount_code"] == "SAVE20"
++    assert body["discount_percent"] == 20
++    assert body["discount_cents"] == 200
++
++
++def test_rounding_half_up_boundary(client):
++    """PRD AC-3 — subtotal 999c × SAVE10 = 999*0.10 = 99.9 → half-up 100."""
++    user = _make_user(client, email="round@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 9.99}],
++            "discount_code": "SAVE10",
++        },
++    )
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["total"] == 899
++    assert body["discount_cents"] == 100
++
++
++def test_code_is_case_insensitive(client):
++    """PRD AC-4 — lower- and mixed-case variants are accepted; stored canonical."""
++    user = _make_user(client, email="case@example.com")
++    for variant in ("save10", "Save10", "  SAVE10  "):
++        resp = client.post(
++            "/orders",
++            headers={"X-User-Id": str(user["id"])},
++            json={
++                "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++                "discount_code": variant,
++            },
++        )
++        assert resp.status_code == 201, variant
++        body = resp.json()
++        assert body["total"] == 900
++        assert body["discount_code"] == "SAVE10"
++
++
++def test_invalid_code_returns_400_and_writes_nothing(client, db_engine):
++    """PRD AC-5 — unknown code → 400; no orders, no order_items written."""
++    user = _make_user(client, email="bad@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "NOPE",
++        },
++    )
++    assert resp.status_code == 400
++    assert resp.json()["detail"] == "invalid discount code"
++
++    Session = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)
++    with Session() as s:
++        assert s.query(Order).count() == 0
++        assert s.query(OrderItem).count() == 0
++
++
++def test_empty_string_code_returns_400(client, db_engine):
++    """PRD AC-5 — empty-string code is invalid, no rows written."""
++    user = _make_user(client, email="empty@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "",
++        },
++    )
++    assert resp.status_code == 400
++
++    Session = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)
++    with Session() as s:
++        assert s.query(Order).count() == 0
++
++
++def test_get_order_returns_discount_fields(client):
++    """PRD AC-6 — GET surfaces canonical code, percent, and cents."""
++    user = _make_user(client, email="get@example.com")
++    created = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "save20",
++        },
++    ).json()
++
++    resp = client.get(
++        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["discount_code"] == "SAVE20"
++    assert body["discount_percent"] == 20
++    assert body["discount_cents"] == 200
++    assert body["total"] == 800
++
++
++def test_get_order_without_discount_returns_null_fields(client):
++    """PRD AC-6 — GET on an order created without a code returns null fields."""
++    user = _make_user(client, email="getnull@example.com")
++    created = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}]},
++    ).json()
++
++    resp = client.get(
++        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body.get("discount_code") is None
++    assert body.get("discount_percent") is None
++    assert body.get("discount_cents") is None
++
++
++def test_missing_x_user_id_still_401_with_discount(client):
++    """PRD AC-7 — auth boundary unchanged: missing header → 401."""
++    resp = client.post(
++        "/orders",
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "SAVE10",
++        },
++    )
++    assert resp.status_code == 401
++
++
++def test_unknown_user_still_401_with_discount(client):
++    """PRD AC-7 — auth boundary unchanged: unknown user → 401."""
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": "99999"},
++        json={
++            "items": [{"sku": "A", "quantity": 1, "unit_price": 10.00}],
++            "discount_code": "SAVE10",
++        },
++    )
++    assert resp.status_code == 401
++
++
++def test_total_and_discount_cents_are_integers(client):
++    """PRD AC-8 — stored values are non-negative integers."""
++    user = _make_user(client, email="int@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={
++            "items": [{"sku": "A", "quantity": 3, "unit_price": 7.77}],
++            "discount_code": "SAVE5",
++        },
++    )
++    body = resp.json()
++    assert isinstance(body["total"], int)
++    assert isinstance(body["discount_cents"], int)
++    assert body["total"] >= 0
++    assert body["discount_cents"] >= 0

@@ -36,6 +36,7 @@ SCORE=""
 NOTES=""
 RECORD=1
 MODEL="sonnet"
+WITH_CLARIFY=0
 TOKEN_FILE="${CLAUDE_BENCH_TOKEN_FILE:-$HOME/.config/claude-bench/oauth-token}"
 
 while [[ $# -gt 0 ]]; do
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --notes) NOTES="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
         --token-file) TOKEN_FILE="$2"; shift 2 ;;
+        --with-clarify) WITH_CLARIFY=1; shift ;;
         --no-record) RECORD=0; shift ;;
         -h|--help)
             sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
@@ -56,7 +58,7 @@ done
 
 [[ -z "$TASK" || -z "$RUN" ]] && { echo "missing --task / --run" >&2; exit 2; }
 [[ "$TASK" =~ ^[1-4]$ ]] || { echo "--task must be 1..4" >&2; exit 2; }
-[[ "$RUN" =~ ^[1-9]$ ]] || { echo "--run must be 1..9" >&2; exit 2; }
+[[ "$RUN" =~ ^[1-9][0-9]?$ ]] || { echo "--run must be 1..99" >&2; exit 2; }
 if [[ "$RECORD" == 1 && ( -z "$SCORE" || -z "$NOTES" ) ]]; then
     echo "--score and --notes required unless --no-record" >&2
     exit 2
@@ -165,6 +167,11 @@ PHASE2_PROMPT="Use the speckit-specify skill to create a feature specification. 
 $PROMPT"
 call_claude specify 2 "$SID" "$PHASE2_PROMPT" >/dev/null
 
+if [[ "$WITH_CLARIFY" == 1 ]]; then
+    echo "→ phase 2b: /speckit-clarify (optional gate)"
+    call_claude clarify 2b "$SID" "Use the speckit-clarify skill. Surface structured clarifying questions about the spec before we proceed to planning. Where the spec is ambiguous or the user request implies but does not state a requirement, raise it." >/dev/null
+fi
+
 echo "→ phase 3: /speckit-plan"
 call_claude plan 3 "$SID" "Use the speckit-plan skill. Accept defaults; produce the implementation plan for the spec we just wrote." >/dev/null
 
@@ -182,20 +189,38 @@ TOTAL_COST=$(jq -s '[.[].total_cost_usd] | add' "$ART_DIR"/phase-*.json)
 TOTAL_IN=$(jq -s '[.[].usage.input_tokens] | add' "$ART_DIR"/phase-*.json)
 TOTAL_OUT=$(jq -s '[.[].usage.output_tokens] | add' "$ART_DIR"/phase-*.json)
 
-# per-phase breakdown for run-meta.json
-PHASE_COSTS=$(jq -n \
-    --slurpfile c "$ART_DIR/phase-1-constitution.json" \
-    --slurpfile s "$ART_DIR/phase-2-specify.json" \
-    --slurpfile p "$ART_DIR/phase-3-plan.json" \
-    --slurpfile t "$ART_DIR/phase-4-tasks.json" \
-    --slurpfile i "$ART_DIR/phase-5-implement.json" \
-    '{
-      constitution: $c[0].total_cost_usd,
-      specify: $s[0].total_cost_usd,
-      plan: $p[0].total_cost_usd,
-      tasks: $t[0].total_cost_usd,
-      implement: $i[0].total_cost_usd
-    }')
+# per-phase breakdown for run-meta.json (clarify phase optional)
+if [[ "$WITH_CLARIFY" == 1 ]]; then
+    PHASE_COSTS=$(jq -n \
+        --slurpfile c "$ART_DIR/phase-1-constitution.json" \
+        --slurpfile s "$ART_DIR/phase-2-specify.json" \
+        --slurpfile cl "$ART_DIR/phase-2b-clarify.json" \
+        --slurpfile p "$ART_DIR/phase-3-plan.json" \
+        --slurpfile t "$ART_DIR/phase-4-tasks.json" \
+        --slurpfile i "$ART_DIR/phase-5-implement.json" \
+        '{
+          constitution: $c[0].total_cost_usd,
+          specify: $s[0].total_cost_usd,
+          clarify: $cl[0].total_cost_usd,
+          plan: $p[0].total_cost_usd,
+          tasks: $t[0].total_cost_usd,
+          implement: $i[0].total_cost_usd
+        }')
+else
+    PHASE_COSTS=$(jq -n \
+        --slurpfile c "$ART_DIR/phase-1-constitution.json" \
+        --slurpfile s "$ART_DIR/phase-2-specify.json" \
+        --slurpfile p "$ART_DIR/phase-3-plan.json" \
+        --slurpfile t "$ART_DIR/phase-4-tasks.json" \
+        --slurpfile i "$ART_DIR/phase-5-implement.json" \
+        '{
+          constitution: $c[0].total_cost_usd,
+          specify: $s[0].total_cost_usd,
+          plan: $p[0].total_cost_usd,
+          tasks: $t[0].total_cost_usd,
+          implement: $i[0].total_cost_usd
+        }')
+fi
 
 # --- 5. copy spec/plan/tasks artifacts ------------------------------------
 # Spec Kit writes to target/specs/<feature-slug>/ — find the newest one

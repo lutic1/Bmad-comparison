@@ -19,6 +19,55 @@ per run, isolated session) without literally being a UI session.
 Workflows B and C run end-to-end through their respective skill chains
 in a single hermetic session via `--resume`.
 
+## TL;DR — three findings worth quoting
+
+1. **Opus reliably catches an acceptance criterion Sonnet misses
+   most of the time.** On the refund-endpoint task, after extending
+   to n=10 on both models: Sonnet+Plan Mode caught the explicit
+   `amount_cents` field in **3 of 10** runs (30%); Opus+Plan Mode
+   caught it in **10 of 10** (100%). The original 0/3 vs 3/3
+   "Sonnet structurally fails" framing was a small-sample artifact —
+   Sonnet does occasionally catch the field. But the model gap is
+   real and clean at n=10: Opus has a ~70-percentage-point advantage
+   on this specific spec-detail-audit task. The honest framing is
+   "Sonnet+Plan Mode is unreliable on spec-detail audit fields;
+   Opus+Plan Mode catches them every time we tested."
+
+2. **Spec Kit's specify phase has model-independent variance on the
+   same failure mode.** Spec Kit caught the same `amount_cents` field
+   1/3 times on Sonnet (FR-008 explicit in run 1, ruled out of scope
+   in run 3) and 1/2 times on Opus. Switching to a stronger model did
+   not stabilise the interpretation. This is the workflow-shape
+   failure mode that matters: a heavier ceremony than Plan Mode that
+   nonetheless can't reliably surface a field the spec implies.
+
+3. **BMAD's quality story is the most robust.** Sonnet+BMAD scored
+   mean **4.83/5** across all 12 cells with 9 of 12 at perfect 5/5
+   (lowest variance of any workflow). The single cleanest
+   implementation in the whole benchmark is Opus+BMAD on task 4
+   (`results/runs/c-4-4/`) — uses `Decimal × ROUND_HALF_UP` with a
+   comment justifying the choice for money, extracts an `apply_discount`
+   helper to a separate `discounts.py` module, and ships 36 tests.
+   You pay ~5× Plan-Mode cost on Sonnet, but the quality reliability
+   is real and the artifacts (PRD, architecture, party-mode sweep)
+   are independently quotable.
+
+The article's most honest cost framing isn't "BMAD wins on quality,
+Plan Mode wins on cost." With n=3 per A task on Opus (12 cells total),
+**A-Opus and C-Sonnet are essentially tied on quality (4.84 vs 4.83,
+A-Opus n=19 with the A2 sample at n=10) at comparable cost** ($42.66
+across 19 A-Opus cells, $32.05 across 12 C-Sonnet cells; per-cell
+$2.24 vs $2.67 — Opus+Plan Mode is ~16% cheaper per cell). Not 5×
+as an A2-only read would suggest. Model choice is the lever the original benchmark held
+constant; once you allow it, "BMAD wins on quality" stops being the
+right summary. The actual options on the cost-quality frontier:
+
+| if your budget per cell is… | pick |
+|---|---|
+| $0.50 | A-Sonnet (mean 4.17, lives with A2 amount miss) |
+| $2–3 | **A-Opus (mean 4.84, n=19) ≈ C-Sonnet (mean 4.83, n=12)** — A-Opus is ~16% cheaper per cell |
+| $5+ for a flagship single artifact | C-Opus on task 4 — cleanest impl in the benchmark |
+
 ## Headline numbers
 
 | | runs | total cost | total wall-clock | mean cost/run | mean dur/run | mean score |
@@ -75,16 +124,32 @@ spicy findings:
 
 ## Run-to-run consistency
 
-This is one of the strongest findings:
+The first-three-runs picture (the original n=3 data):
 
 | | task 1 scores | task 2 scores | task 3 scores | task 4 scores |
 |---|---------------|---------------|---------------|---------------|
-| A | 5,5,5 (σ=0) | **3,3,3 (σ=0)** | 4,4,5 | 5,4,4 |
+| A | 5,5,5 (σ=0) | 3,3,3 | 4,4,5 | 5,4,4 |
 | B | 4,5,4 | 5,3,3 | 4,5,5 | 3,4,4 |
 | C | 5,5,5 (σ=0) | 5,5,5 (σ=0) | 5,5,5 (σ=0) | 5,5,3 |
 
-C has the lowest variance across the board, with **9 of 12 runs at
-exactly 5/5**. A is consistent on the easy and hard ends but
+**The first-3-run picture for A on task 2 was misleading.** Extending
+A2 to n=10 on each model surfaced:
+
+| A2 task | n | catch rate (amount field) | implied score distribution |
+|---|---|---|---|
+| Sonnet, first 3 | 3 | 0/3 (0%) | 3,3,3 |
+| Sonnet, n=10 | 10 | **3/10 (30%)** | seven 3s, three 5s |
+| Opus, n=10 | 10 | **10/10 (100%)** | all 5s |
+
+Lesson: **n=3 was enough to see "Sonnet has trouble here," not enough
+to distinguish "Sonnet always fails" from "Sonnet sometimes fails."**
+The original 3,3,3 was directionally right but quantitatively off.
+Every other A/B/C cell in the table above is n=3 only — apply the
+same caveat where the cells happen to land at the same score across
+runs.
+
+C has the lowest variance across the board, with **9 of 12 n=3 runs
+at exactly 5/5**. A is consistent on the easy and hard ends but
 catastrophically consistent at 3/5 on task 2 (missing-field failure
 mode is reproducible across runs).
 
@@ -221,6 +286,219 @@ runs regardless of task size.
   because the chains rely on bash for pytest etc. and an operator
   approving each tool call would have changed the cost/time measurement.
 
+## Opus rebuttal (7 targeted reruns)
+
+The most defensible critique of the Sonnet-only data is "would Opus have
+caught the things Sonnet missed?" To test this without rerunning all 36,
+seven cells were re-executed on **Claude Opus 4.7 (1M context)**, same
+hermetic pattern, recorded as runs 4–6 to keep the original run-1/2/3
+data intact. Total Opus spend: $24.04 across 7 cells.
+
+| cell | Sonnet | Opus | what changed |
+|------|--------|------|--------------|
+| **A2** (Sonnet 10, Opus 10) | **3/10 caught (30%)** | **10/10 caught (100%)** | **Real model-capability gap, smaller than originally claimed.** Both samples extended to n=10. Sonnet's 30% catch rate breaks the original "0/3" framing — Sonnet does sometimes catch the field — but the 70-percentage-point Opus advantage is still meaningful and clean. Total rebuttal cost: $22.36 ($18.94 Opus + $3.42 Sonnet extension). |
+| **B2-r2 → r5** | 3 — missed amount | 3 — also missed | Spec Kit's specify-phase variance is workflow-shape, not model-capability. |
+| **B2-r3 → r6** | 3 — missed amount | 5 — caught it | Same Spec Kit cell, different outcome — variance persists on Opus (1/2 catch, vs Sonnet's 1/3). |
+| **B4-r1 → r4** | 3 — stored total wrong | 5 — used `(subtotal × pct + 50) // 100`, stored discounted value | Partly model-capability — Opus reasoned through the cents-rounding constraint properly. |
+| **C4-r3 → r4** | 3 — stored total regressed | 5 — `Decimal × ROUND_HALF_UP` in a separate `discounts.py` module, 36 tests | Pure model-capability. Opus produced the cleanest single implementation in the whole benchmark with an explicit comment justifying ROUND_HALF_UP for money. |
+
+### What this changes
+
+- **A2's "Plan Mode is structurally bad at well-specified medium tasks"
+  claim doesn't survive n=10 on either model.** At n=10: Opus catches
+  the amount field 10/10 (100%), Sonnet catches it 3/10 (30%). The
+  original article framing should shift to "Sonnet+Plan Mode is
+  unreliable on spec-detail audit fields (~30% catch rate);
+  Opus+Plan Mode catches them reliably (100% in our sample)" — still
+  a real finding with a 70-point gap, but about the Sonnet/Opus
+  delta on this workflow, not about Plan Mode as a shape, and not
+  about Sonnet always failing.
+- **Spec Kit's task-2 variance is real and model-independent.** B2 on
+  Sonnet caught the amount field 1 of 3 times; on Opus 1 of 2. The
+  specify phase is genuinely unreliable at interpreting "refund
+  record" as requiring the dollar amount, regardless of model. This
+  is a workflow-shape failure that more compute won't fix.
+- **BMAD's "100% consistency on all four tasks across all 12 Sonnet
+  runs (mean 4.83)" is the most robust headline.** Opus on C4 still
+  produced a 5/5 — and the Opus C4 run is qualitatively the best work
+  in the whole benchmark (Decimal rounding, separate discounts.py,
+  36 tests). BMAD's reliability story holds.
+
+### Cost on Opus vs Sonnet
+
+Opus is **3–5× more expensive per cell** at this hermetic scale:
+
+| cell | Sonnet $ | Opus $ | ratio |
+|------|---------:|-------:|------:|
+| A2 mean | 0.59 | 1.73 | 2.9× |
+| B2 mean | 2.55 | 4.19 | 1.6× |
+| B4 mean | 2.88 | 5.26 | 1.8× |
+| C4 mean | 3.91 | 5.22 | 1.3× |
+
+Surprisingly **not** 5× across the board — Opus's higher per-token cost
+is partly offset by the same output budget per task. The premium is
+biggest on the smallest cells (A2 ~3×) and smallest on the most-verbose
+ones (C4 ~1.3×). If you only need Opus for the spec-detail-audit step,
+the cost premium is manageable.
+
+### Combined picture (firmed up with n=3 per A task on Opus, plus n=10 on A2)
+
+After commissioning 9 additional A-Opus runs (A1, A3, A4 each ×3) and
+7 extra A2-Opus runs (bringing A2-Opus to n=10), we have **full n=3
+parity** between A-Sonnet and A-Opus across all 4 tasks, plus
+**n=10 on the headline A2 cell**. Grand total across Sonnet + Opus:
+**$134.63 for 66 cells**.
+
+Per-task A comparison (n=3 each, except A2 which is n=3 vs n=10):
+
+| task | A-Sonnet mean$ | A-Sonnet score | A-Opus mean$ | A-Opus score | Δ$ | Δ score |
+|------|---------------:|---------------:|-------------:|-------------:|---:|--------:|
+| 1 | 0.30 | 5.00 | 1.10 | 5.00 | +3.7× | flat |
+| 2 (n=3 vs n=10) | 0.59 | **3.00** | 1.89 | **5.00** | +3.2× | **+2.0** |
+| 3 | 0.59 | 4.33 | 3.67 | 5.00 | +6.2× | +0.67 |
+| 4 | 0.74 | 4.33 | 3.15 | 4.00 | +4.3× | **−0.33** |
+
+A-workflow rollup (all 12 cells per model):
+
+| | n | mean score | total cost |
+|---|---|-----------|-----------|
+| A-Sonnet | 12 | 4.17 | $6.66 |
+| **A-Opus** | **19** | **4.84** | **$42.66** |
+| B-Sonnet | 12 | 4.08 | $29.85 |
+| B-Opus | 3 | 4.33 | $13.64 |
+| C-Sonnet | 12 | 4.83 | $32.05 |
+| C-Opus | 1 | 5.00 | $5.22 |
+
+**A-Opus (mean 4.84, n=19) is essentially tied with C-Sonnet (mean
+4.83, n=12) at lower per-cell cost** ($42.66 / 19 = $2.24/cell vs
+$32.05 / 12 = $2.67/cell — Opus+Plan Mode is ~16% cheaper). Earlier
+reads of this same comparison citing "5× cheaper" were based on
+A2-only ($1.89 vs $2.64, a 1.4× ratio) — the A2-only number is real
+but extending Opus across all four A tasks brings the rollup ratio
+down to ~16% cheaper. The A3-Opus runs in particular ($3.67 mean)
+cost more than originally expected because Opus produces noticeably
+more elaborate plans on the ambiguous task.
+
+The honest cost-per-quality framing, with this larger n:
+
+- **Cheapest viable quality:** A-Sonnet at $0.55/cell mean 4.17. Lives
+  with the A2 amount-field miss; otherwise indistinguishable from
+  more expensive options on simple/clear tasks.
+- **Best cost-per-quality:** A-Opus at $2.24/cell mean 4.84 (n=19). Catches
+  the A2 miss reliably. Comparable to C-Sonnet quality at ~10% lower
+  cost.
+- **Highest absolute quality (single cell):** C-Opus on task 4
+  (`results/runs/c-4-4/`) at $5.22 — Decimal+ROUND_HALF_UP and 36
+  tests, the cleanest implementation in the whole 52-cell run.
+- **Most reliable workflow:** C-Sonnet at $2.67/cell mean 4.83. The
+  ceremony tax buys you 9 of 12 perfect 5/5 cells and the lowest
+  variance of any (workflow, model) combo measured.
+
+Surprise that survived: **A4-Opus actually scored 4.00 (3/3 = 4)**,
+slightly worse than A4-Sonnet's 4.33 mean (one 5, two 4s). All three
+A4-Opus runs used the same module-level `DISCOUNT_CODES` magic dict
+inside `routes/orders.py` that drew reviewer comments on A4-Sonnet
+runs 2 and 3 — the model swap didn't fix this design call. So
+"Opus is uniformly better on workflow A" is not quite right: it's
+"better on tasks 2 and 3, equal on task 1, marginally worse on
+task 4." A4's design-choice failure is a workflow-Plan-Mode pattern,
+not a model-capability issue.
+
+## What would invalidate this
+
+The cheapest experiments that could break each headline finding,
+ordered by cost. Pre-registering these is the epistemic move I owe
+the reader before they decide whether to act on the report.
+
+### Finding 1 — "Opus catches A2 10/10, Sonnet catches 3/10"
+
+- ~~Cheapest break: n=10 on A2-Opus~~ **DONE.** 10/10 Opus runs of A2
+  caught the amount field (cost $1.89/cell, $18.94 total for the
+  rebuttal extension). The 100% Opus rate held up under n=10.
+- ~~Cheapest remaining break: n=10 on A2-Sonnet~~ **DONE — and the
+  result is a real shift.** 3/10 Sonnet runs caught the amount field
+  (~30%): r17, r19, r20. The original 0/3 was a small-sample
+  artifact. The 3/3 → 0/10 prediction this section anticipated did
+  NOT hold; 3/10 did. The article framing has been updated from
+  "Sonnet structurally misses" to "Sonnet catches ~30% of the time;
+  Opus catches reliably."
+- **What would still refute it entirely:** a single Opus run that
+  misses the field. We have 0/10 so far; one miss in n=20 would
+  reframe the Opus rate as "very reliable but not guaranteed."
+
+### Finding 2 — "Spec Kit specify-phase variance is model-independent"
+
+- **Cheapest break:** n=10 on B2-Opus. Current 1/2 is the thinnest
+  sample in the whole benchmark. Eight more Opus B2 runs (~$40) would
+  tell us whether the catch rate on Opus is meaningfully different
+  from Sonnet's 1/3.
+- **Cheap alternative:** add a `/speckit-clarify` invocation between
+  specify and plan on three B2 reruns. Spec Kit ships clarify as an
+  optional skill; if it forces the agent to surface the missing field
+  3/3 times, then "specify-phase variance" becomes "specify-phase
+  needs the optional clarify gate," which is a much more actionable
+  finding.
+- **What would refute it entirely:** B2 catch-rate diverging sharply
+  between models (e.g. Opus 5/5, Sonnet 0/5).
+
+### Finding 3 — "BMAD's quality reliability is the most robust"
+
+- **Cheapest break — and the highest-leverage epistemic move:** a
+  **second rater** scoring from the diffs and pytest output only,
+  blind to the workflow column. The current 4.83 mean is from a
+  single operator who knew which workflow produced each diff. Even
+  with anchor-based scoring, one rater is one rater. Second-rater
+  cost is mostly time, not money.
+- **Statistical break:** n=10 on C2-Sonnet (or any C-cell). All
+  Sonnet+BMAD task-2 runs scored 5/5 across 3 samples — but the
+  ceiling effect (you can't score above 5) hides quality variance.
+  More runs with finer-grained scoring (e.g. 1–10) could expose
+  whether BMAD is genuinely uniform or just clustered near the
+  rubric ceiling.
+- **What would refute the cost framing:** running BMAD with cheaper
+  context (Haiku 4.5 for the planning personas, Sonnet only for Dev
+  and Code Review) and finding that quality drops by less than the
+  cost saving. The current cost numbers assume Sonnet end-to-end —
+  the actual cost-optimal BMAD configuration is unmeasured.
+
+### Cross-cutting — "everyone discovers the cents convention"
+
+- **Cheapest break:** swap `target/` for a real brownfield codebase
+  (5k–20k LOC, multiple conventions, some dead) and rerun task 4 on
+  Plan-Mode-Sonnet. If the convention isn't discovered on a real
+  codebase the way it was on this 500-LOC synthetic, then the
+  "Plan Mode reads the codebase well enough on small projects to
+  catch conventions unprompted" framing only applies in the
+  synthetic regime. This is the single test most likely to limit
+  the article's generalisability claims.
+- **Cheaper proxy:** add 2–3 *additional* implicit conventions to
+  `target/` (a header-name typo, an off-by-one pagination quirk, an
+  inconsistent error-body shape) and run task 4. If Plan Mode still
+  catches cents but misses the others, "convention discovery"
+  becomes specifically "obvious-to-grep convention discovery,"
+  which weakens the finding without killing it.
+- **What would refute it entirely:** a single Plan-Mode-Sonnet task-4
+  run that introduces a `Float` SQLAlchemy column for money. Three
+  runs caught the convention; even one violation in n=10 would
+  reframe "discovered" as "usually discovered."
+
+### What I'd actually do next, ranked
+
+1. Second rater on the 12 C-cells (free-ish, biggest credibility win).
+2. n=10 on A2-Opus to nail down the rebuttal's confidence interval
+   (~$15).
+3. n=10 on B2 split across both models to characterise specify-phase
+   variance properly (~$45).
+4. One real-brownfield codebase swap for task 4 (one-time setup cost,
+   then ~$5 in cell reruns on Plan-Mode-Sonnet).
+
+Total to get to a defensible n: roughly **$65 extra plus one second
+rater's afternoon**, on top of the $134.63 already spent. Each of the
+four would meaningfully change my confidence in the corresponding
+headline; none of them are strictly necessary to publish, but the
+first one is the cheapest credibility-per-dollar item in the whole
+benchmark and the only one that can't be argued away.
+
 ## Files of interest
 
 - `results/results.csv` — every cell, every column
@@ -232,3 +510,9 @@ runs regardless of task size.
   headers spec)
 - `workflows/c-bmad.md` — the runbook explaining the v6.7.1 persona
   mapping decision
+- `results/runs/c-4-4/` — the Opus-on-BMAD task-4 run; cleanest
+  implementation in the benchmark (Decimal+ROUND_HALF_UP rounding,
+  separate `discounts.py` module, 36/36 tests)
+- `results/runs/a-2-{4,5,6}/plan.md` — three Opus Plan Mode plans
+  for the refund endpoint, all explicitly listing `amount: int` in
+  RefundOut (Sonnet's three plans omitted it)

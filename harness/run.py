@@ -363,7 +363,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workflow", required=True, choices=["a", "b", "c"])
     parser.add_argument("--task", required=True, type=int, choices=[1, 2, 3, 4])
-    parser.add_argument("--run", required=True, type=int, choices=range(1, 10))
+    parser.add_argument("--run", required=True, type=int, choices=range(1, 100))
 
     parser.add_argument(
         "--non-interactive",
