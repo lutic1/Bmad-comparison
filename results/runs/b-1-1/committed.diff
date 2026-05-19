@@ -1,0 +1,902 @@
+diff --git a/target/.specify/feature.json b/target/.specify/feature.json
+new file mode 100644
+index 0000000..7da2fea
+--- /dev/null
++++ b/target/.specify/feature.json
+@@ -0,0 +1,3 @@
++{
++  "feature_directory": "specs/001-fix-order-date-format"
++}
+diff --git a/target/.specify/memory/constitution.md b/target/.specify/memory/constitution.md
+index a4670ff..61ea0f4 100644
+--- a/target/.specify/memory/constitution.md
++++ b/target/.specify/memory/constitution.md
+@@ -1,50 +1,73 @@
+-# [PROJECT_NAME] Constitution
+-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
++<!--
++SYNC IMPACT REPORT
++==================
++Version change: [template] → 1.0.0 (initial ratification)
++
++Principles added:
++  - I. Stack
++  - II. Idiomatic FastAPI
++  - III. Testing (Non-Negotiable)
++  - IV. Conventional Commits
++  - V. Dependencies
++  - VI. Type Hints
++  - VII. Refactoring Scope
++
++Sections added: Core Principles, Governance
++Sections removed: [SECTION_2_NAME], [SECTION_3_NAME] (not applicable to this project)
++
++Templates reviewed:
++  ✅ .specify/templates/plan-template.md — Constitution Check section is generic; no update needed
++  ✅ .specify/templates/spec-template.md — no constitution references; no update needed
++  ✅ .specify/templates/tasks-template.md — no constitution references; no update needed
++  ✅ .specify/templates/checklist-template.md — not reviewed (no constitution references expected)
++
++Deferred items: none
++-->
++
++# FastAPI Service Constitution
+ 
+ ## Core Principles
+ 
+-### [PRINCIPLE_1_NAME]
+-<!-- Example: I. Library-First -->
+-[PRINCIPLE_1_DESCRIPTION]
+-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
++### I. Stack
++
++Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest.
+ 
+-### [PRINCIPLE_2_NAME]
+-<!-- Example: II. CLI Interface -->
+-[PRINCIPLE_2_DESCRIPTION]
+-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
++### II. Idiomatic FastAPI
+ 
+-### [PRINCIPLE_3_NAME]
+-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+-[PRINCIPLE_3_DESCRIPTION]
+-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
++Idiomatic FastAPI: small route functions, Pydantic models for
++request and response shapes, dependency injection via Depends.
+ 
+-### [PRINCIPLE_4_NAME]
+-<!-- Example: IV. Integration Testing -->
+-[PRINCIPLE_4_DESCRIPTION]
+-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
++### III. Testing (NON-NEGOTIABLE)
+ 
+-### [PRINCIPLE_5_NAME]
+-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+-[PRINCIPLE_5_DESCRIPTION]
+-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
++Tests are non-optional. Minimum 80% line coverage on changed files.
++Every new route ships with happy-path and at least one error-path
++test.
+ 
+-## [SECTION_2_NAME]
+-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
++### IV. Conventional Commits
+ 
+-[SECTION_2_CONTENT]
+-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
++Conventional commits: feat:, fix:, refactor:, test:, docs:, chore:.
+ 
+-## [SECTION_3_NAME]
+-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
++### V. Dependencies
+ 
+-[SECTION_3_CONTENT]
+-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
++No new third-party dependencies without a stated justification.
++
++### VI. Type Hints
++
++Type hints on every public function and route handler.
++
++### VII. Refactoring Scope
++
++Don't refactor unrelated code in the same change.
+ 
+ ## Governance
+-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+ 
+-[GOVERNANCE_RULES]
+-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
++This constitution supersedes all other practices. Amendments require
++documentation and a version increment following semantic versioning:
++
++- MAJOR: backward-incompatible principle removals or redefinitions.
++- MINOR: new principle or section added, or materially expanded guidance.
++- PATCH: clarifications, wording fixes, non-semantic refinements.
++
++All PRs must verify compliance with the principles above before merge.
+ 
+-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
++**Version**: 1.0.0 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-05-18
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+index 7e6443a..6f3d7d2 100644
+--- a/target/CLAUDE.md
++++ b/target/CLAUDE.md
+@@ -1,4 +1,55 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
+ <!-- SPECKIT START -->
+-For additional context about technologies to be used, project structure,
+-shell commands, and other important information, read the current plan
++## Active feature plan
++
++See `specs/001-fix-order-date-format/plan.md` for the current implementation plan.
+ <!-- SPECKIT END -->
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/specs/001-fix-order-date-format/checklists/requirements.md b/target/specs/001-fix-order-date-format/checklists/requirements.md
+new file mode 100644
+index 0000000..1e6593d
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/checklists/requirements.md
+@@ -0,0 +1,34 @@
++# Specification Quality Checklist: Fix Order Date Format
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-05-18
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [x] No implementation details (languages, frameworks, APIs)
++- [x] Focused on user value and business needs
++- [x] Written for non-technical stakeholders
++- [x] All mandatory sections completed
++
++## Requirement Completeness
++
++- [x] No [NEEDS CLARIFICATION] markers remain
++- [x] Requirements are testable and unambiguous
++- [x] Success criteria are measurable
++- [x] Success criteria are technology-agnostic (no implementation details)
++- [x] All acceptance scenarios are defined
++- [x] Edge cases are identified
++- [x] Scope is clearly bounded
++- [x] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [x] All functional requirements have clear acceptance criteria
++- [x] User scenarios cover primary flows
++- [x] Feature meets measurable outcomes defined in Success Criteria
++- [x] No implementation details leak into specification
++
++## Notes
++
++All checklist items pass. Spec is ready for `/speckit-plan`.
+diff --git a/target/specs/001-fix-order-date-format/contracts/order-response.md b/target/specs/001-fix-order-date-format/contracts/order-response.md
+new file mode 100644
+index 0000000..e195a0f
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/contracts/order-response.md
+@@ -0,0 +1,76 @@
++# Contract: Order Response
++
++**Feature**: `001-fix-order-date-format`
++**Date**: 2026-05-18
++
++## Endpoints
++
++### POST /orders
++
++Creates a new order for the authenticated user.
++
++**Request headers**: `X-User-Id: <int>`
++
++**Request body**:
++```json
++{
++  "items": [
++    { "sku": "string", "quantity": 1, "unit_price": 9.99 }
++  ]
++}
++```
++
++**Response** `201 Created`:
++```json
++{
++  "id": 1,
++  "user_id": 1,
++  "total": 999,
++  "created_at": "2026-05-18",
++  "items": [
++    { "sku": "WIDGET", "quantity": 1, "unit_price": 999 }
++  ]
++}
++```
++
++---
++
++### GET /orders/{order_id}
++
++Retrieves an order owned by the authenticated user.
++
++**Request headers**: `X-User-Id: <int>`
++
++**Response** `200 OK`:
++```json
++{
++  "id": 1,
++  "user_id": 1,
++  "total": 999,
++  "created_at": "2026-05-18",
++  "items": [
++    { "sku": "WIDGET", "quantity": 1, "unit_price": 999 }
++  ]
++}
++```
++
++---
++
++## Field Notes
++
++| Field | Type | Format | Notes |
++|-------|------|--------|-------|
++| `created_at` | string | `YYYY-MM-DD` (ISO 8601) | Bug fix: was incorrectly `YYYY-DD-MM` |
++| `total` | integer | cents | Stored and returned as integer cents |
++| `unit_price` | integer | cents | Same as total |
++
++---
++
++## Error Responses
++
++| Status | Condition |
++|--------|-----------|
++| 400 | `items` array is empty |
++| 401 | `X-User-Id` header missing or user not found |
++| 403 | Authenticated user does not own the requested order |
++| 404 | Order ID does not exist |
+diff --git a/target/specs/001-fix-order-date-format/data-model.md b/target/specs/001-fix-order-date-format/data-model.md
+new file mode 100644
+index 0000000..85c2386
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/data-model.md
+@@ -0,0 +1,31 @@
++# Data Model: Fix Order Date Format
++
++**Feature**: `001-fix-order-date-format`
++**Date**: 2026-05-18
++
++## Summary
++
++No schema changes are required. The bug is entirely in the serialisation
++layer: the `created_at` column is stored correctly as a `DateTime` in SQLite;
++only the string representation returned in API responses is wrong.
++
++---
++
++## Affected Entity: Order
++
++| Field | DB Type | Stored correctly? | API representation (before fix) | API representation (after fix) |
++|-------|---------|-------------------|----------------------------------|--------------------------------|
++| `created_at` | `DateTime` | ✅ Yes | `YYYY-DD-MM` (e.g., `"2026-18-05"`) | `YYYY-MM-DD` (e.g., `"2026-05-18"`) |
++
++All other `Order` fields are unaffected.
++
++---
++
++## Related Utility
++
++`src/api/utils/dates.py` — `format_order_date(dt: datetime) -> str`
++
++This helper exists but is not used by the route handlers (they call
++`strftime` inline). The fix must be applied in all four locations listed
++in `research.md`; using the shared helper in the routes is an option but
++is out of scope per the constitution's refactoring principle (VII).
+diff --git a/target/specs/001-fix-order-date-format/plan.md b/target/specs/001-fix-order-date-format/plan.md
+new file mode 100644
+index 0000000..fb67469
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/plan.md
+@@ -0,0 +1,88 @@
++# Implementation Plan: Fix Order Date Format
++
++**Branch**: `001-fix-order-date-format` | **Date**: 2026-05-18 | **Spec**: [spec.md](spec.md)
++
++**Input**: Feature specification from `specs/001-fix-order-date-format/spec.md`
++
++## Summary
++
++The `created_at` field in order API responses uses the format string
++`"%Y-%d-%m"`, which transposes day and month, producing `YYYY-DD-MM` instead
++of the correct ISO 8601 `YYYY-MM-DD`. The fix is a one-character swap (`%d`↔`%m`)
++applied in four locations across two source files, plus correcting two existing
++tests that assert the buggy output and adding two new tests to lock in the
++correct format on both order endpoints.
++
++## Technical Context
++
++**Language/Version**: Python 3.11+
++
++**Primary Dependencies**: FastAPI, SQLAlchemy 2.x, Pydantic v2
++
++**Storage**: SQLite via SQLAlchemy (no schema changes needed)
++
++**Testing**: pytest with in-memory SQLite per test (via `conftest.py` fixtures)
++
++**Target Platform**: Linux server (web service)
++
++**Project Type**: web-service
++
++**Performance Goals**: N/A — serialisation-only fix, no measurable overhead
++
++**Constraints**: No new third-party dependencies; fix scope limited to the
++date serialisation layer only (constitution principle VII: no unrelated refactoring)
++
++**Scale/Scope**: 2 source files changed, 1 test file corrected, ~6 lines total
++
++## Constitution Check
++
++*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
++
++| Principle | Status | Notes |
++|-----------|--------|-------|
++| I. Stack — Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest | ✅ | No stack changes |
++| II. Idiomatic FastAPI — small routes, Pydantic models, Depends | ✅ | No route structure changes |
++| III. Testing (NON-NEGOTIABLE) — ≥80% coverage, happy-path + error-path | ✅ | Existing tests corrected; 2 new date-format tests added |
++| IV. Conventional Commits — `fix:` prefix | ✅ | Commit will use `fix: correct order date format to YYYY-MM-DD` |
++| V. Dependencies — no new third-party deps | ✅ | stdlib `datetime.strftime` only |
++| VI. Type Hints — on every public function and route handler | ✅ | All touched functions already typed; no new signatures |
++| VII. Refactoring Scope — don't refactor unrelated code | ✅ | Only the four format strings and their tests are touched |
++
++**Post-design re-check**: All gates still pass. No violations.
++
++## Project Structure
++
++### Documentation (this feature)
++
++```text
++specs/001-fix-order-date-format/
++├── plan.md              # This file
++├── research.md          # Phase 0 output
++├── data-model.md        # Phase 1 output
++├── quickstart.md        # Phase 1 output
++├── contracts/
++│   └── order-response.md   # Phase 1 output
++└── tasks.md             # Phase 2 output (/speckit-tasks — not yet created)
++```
++
++### Source Code (repository root)
++
++```text
++src/
++└── api/
++    ├── utils/
++    │   └── dates.py          # fix: line 5 — format string
++    └── routes/
++        └── orders.py         # fix: lines 77, 101, 127 — format strings
++
++tests/
++├── test_dates.py             # fix: 2 assertions corrected
++└── test_orders.py            # add: 2 new date-format tests
++```
++
++**Structure Decision**: Single-project layout, existing tree. No new files
++or directories in `src/`; one test file corrected, one extended.
++
++## Complexity Tracking
++
++> No constitution violations — this section is intentionally empty.
+diff --git a/target/specs/001-fix-order-date-format/quickstart.md b/target/specs/001-fix-order-date-format/quickstart.md
+new file mode 100644
+index 0000000..d36fdcc
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/quickstart.md
+@@ -0,0 +1,53 @@
++# Quickstart: Verify the Order Date Format Fix
++
++**Feature**: `001-fix-order-date-format`
++**Date**: 2026-05-18
++
++## Reproduce the bug (before fix)
++
++```bash
++# Start the service
++cd /path/to/project
++uvicorn api.main:app --reload
++
++# Create a user
++curl -s -X POST http://localhost:8000/users \
++  -H "Content-Type: application/json" \
++  -d '{"email": "test@example.com", "name": "Test"}' | python3 -m json.tool
++
++# Note the returned user id, e.g. 1
++
++# Create an order
++curl -s -X POST http://localhost:8000/orders \
++  -H "Content-Type: application/json" \
++  -H "X-User-Id: 1" \
++  -d '{"items": [{"sku": "WIDGET", "quantity": 1, "unit_price": 9.99}]}' \
++  | python3 -m json.tool
++```
++
++Before the fix, `created_at` will show `YYYY-DD-MM` — e.g., `"2026-18-05"`
++instead of `"2026-05-18"`.
++
++---
++
++## Verify the fix
++
++After applying the fix, the same request should return `"2026-05-18"`.
++
++### Run the test suite
++
++```bash
++pytest tests/test_dates.py tests/test_orders.py -v
++```
++
++All tests should pass, including:
++- `test_format_order_date_basic` — asserts `"2025-03-07"`
++- `test_format_order_date_end_of_year` — asserts `"2024-12-31"`
++- `test_create_order_date_format` — asserts `YYYY-MM-DD` on POST
++- `test_get_order_date_format` — asserts `YYYY-MM-DD` on GET
++
++### Confirm no regressions
++
++```bash
++pytest
++```
+diff --git a/target/specs/001-fix-order-date-format/research.md b/target/specs/001-fix-order-date-format/research.md
+new file mode 100644
+index 0000000..27d2085
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/research.md
+@@ -0,0 +1,58 @@
++# Research: Fix Order Date Format
++
++**Feature**: `001-fix-order-date-format`
++**Date**: 2026-05-18
++
++## Investigation Findings
++
++### Decision: Correct date format is `%Y-%m-%d` (ISO 8601)
++
++**Rationale**: The Python `strftime` directive `%m` is month and `%d` is
++day-of-month. The format string `"%Y-%d-%m"` currently in use produces
++`YYYY-DD-MM` (e.g., 18 May 2026 → `"2026-18-05"`), which transposes day and
++month. The correct ISO 8601 short date format is `"%Y-%m-%d"`, producing
++`YYYY-MM-DD` (e.g., `"2026-05-18"`).
++
++**Alternatives considered**:
++- RFC 2822 / locale-specific formats — rejected; spec calls for ISO 8601,
++  which is the unambiguous standard for machine-readable dates in APIs.
++- Delegating formatting to Pydantic (native `datetime` field) — would work
++  but changes the response shape; spec does not request that change, and
++  the existing `str` field is intentional.
++
++---
++
++### Bug locations (all stemming from the same typo)
++
++| File | Line(s) | Current | Correct |
++|------|---------|---------|---------|
++| `src/api/utils/dates.py` | 5 | `"%Y-%d-%m"` | `"%Y-%m-%d"` |
++| `src/api/routes/orders.py` | 77 | `"%Y-%d-%m"` | `"%Y-%m-%d"` |
++| `src/api/routes/orders.py` | 101 | `"%Y-%d-%m"` | `"%Y-%m-%d"` |
++| `src/api/routes/orders.py` | 127 (`_format_created_at`) | `"%Y-%d-%m"` | `"%Y-%m-%d"` |
++
++---
++
++### Tests requiring correction
++
++`tests/test_dates.py` asserts the *buggy* output:
++
++```python
++# test_format_order_date_basic  — expects "2025-07-03" (YYYY-DD-MM)
++# test_format_order_date_end_of_year — expects "2024-31-12" (YYYY-DD-MM)
++```
++
++Both assertions must be inverted to expect the correct `YYYY-MM-DD` values:
++- `datetime(2025, 3, 7)` → `"2025-03-07"`
++- `datetime(2024, 12, 31)` → `"2024-12-31"`
++
++`tests/test_orders.py` does not currently assert `created_at` format. Two
++new tests should be added to lock in the correct format for the `POST /orders`
++and `GET /orders/{id}` endpoints.
++
++---
++
++### No NEEDS CLARIFICATION items
++
++The codebase was read directly; all ambiguities are resolved by code
++inspection. No external research was required.
+diff --git a/target/specs/001-fix-order-date-format/spec.md b/target/specs/001-fix-order-date-format/spec.md
+new file mode 100644
+index 0000000..95ff7d8
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/spec.md
+@@ -0,0 +1,88 @@
++# Feature Specification: Fix Order Date Format
++
++**Feature Branch**: `001-fix-order-date-format`
++
++**Created**: 2026-05-18
++
++**Status**: Draft
++
++**Input**: User description: "There's a bug in how order dates are formatted in the API response. Find it and fix it. Update tests as needed."
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Correct Date in Order Response (Priority: P1)
++
++An API consumer creates an order or retrieves an existing one. The `created_at`
++field in the response should be a human-readable calendar date in standard
++ISO 8601 format (YYYY-MM-DD). Currently it comes back with day and month swapped
++(YYYY-DD-MM), making the date unreadable or ambiguous — for example, the 5th
++of January is returned as `2026-05-01` instead of `2026-01-05`, which looks
++like the 1st of May.
++
++**Why this priority**: Incorrect date formatting corrupts information surfaced
++to any consumer of this API — clients, downstream services, reports — and is
++a data-correctness regression.
++
++**Independent Test**: Create an order on a known calendar date (e.g., 18 May
++2026) and assert the response contains `created_at: "2026-05-18"`. This can be
++tested end-to-end against both the create and retrieve endpoints.
++
++**Acceptance Scenarios**:
++
++1. **Given** an order is created on 2026-05-18, **When** the create-order
++   endpoint responds, **Then** `created_at` equals `"2026-05-18"`.
++2. **Given** an existing order created on 2026-05-18, **When** the get-order
++   endpoint responds, **Then** `created_at` equals `"2026-05-18"`.
++3. **Given** an order created on the 1st of any month (day ≠ month),
++   **When** either endpoint responds, **Then** the day and month are not
++   transposed in `created_at`.
++
++---
++
++### Edge Cases
++
++- What happens when day and month share the same numeric value (e.g., 2026-03-03)?
++  The bug is invisible for such dates; tests must use dates where day ≠ month
++  to expose the regression.
++- What happens when the stored timestamp is at a month/day boundary near
++  midnight UTC? The formatted string must still reflect the correct calendar
++  date.
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: The `created_at` field in every order API response MUST be
++  formatted as `YYYY-MM-DD` (ISO 8601 date).
++- **FR-002**: The create-order endpoint (`POST /orders`) MUST return
++  `created_at` in `YYYY-MM-DD` format.
++- **FR-003**: The get-order endpoint (`GET /orders/{id}`) MUST return
++  `created_at` in `YYYY-MM-DD` format.
++- **FR-004**: Any shared date-formatting utility used by order routes MUST
++  produce `YYYY-MM-DD` output.
++- **FR-005**: All existing tests that assert date format MUST be updated to
++  expect the correct `YYYY-MM-DD` output, not the previously incorrect
++  `YYYY-DD-MM` output.
++
++### Key Entities
++
++- **Order**: Has a `created_at` timestamp; the formatted representation of
++  this field in API responses is the subject of this fix.
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: 100% of order API responses return `created_at` as `YYYY-MM-DD`.
++- **SC-002**: No test in the suite asserts a `YYYY-DD-MM`-formatted date.
++- **SC-003**: All tests pass after the fix, including any tests updated to
++  reflect the correct format.
++
++## Assumptions
++
++- The intended format is ISO 8601 (`YYYY-MM-DD`); no other format (e.g.,
++  locale-specific or RFC 2822) has been specified.
++- Only the `created_at` field on order responses is affected; other date
++  fields in the API (e.g., on user resources) are out of scope for this fix.
++- Existing stored data does not need migration — the bug is purely in the
++  serialisation layer, not in how dates are persisted.
+diff --git a/target/specs/001-fix-order-date-format/tasks.md b/target/specs/001-fix-order-date-format/tasks.md
+new file mode 100644
+index 0000000..6278625
+--- /dev/null
++++ b/target/specs/001-fix-order-date-format/tasks.md
+@@ -0,0 +1,143 @@
++---
++
++description: "Task list for fix-order-date-format"
++---
++
++# Tasks: Fix Order Date Format
++
++**Input**: Design documents from `specs/001-fix-order-date-format/`
++
++**Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/ ✅
++
++**Tests**: Test tasks are included — existing tests assert the buggy output and
++must be corrected; two new tests are required to lock in the correct format
++(per FR-005 and constitution principle III).
++
++**Organization**: Single user story; all tasks map to US1.
++
++## Format: `[ID] [P?] [Story] Description`
++
++- **[P]**: Can run in parallel (different files, no dependencies)
++- **[Story]**: Which user story this task belongs to (US1)
++- Include exact file paths in descriptions
++
++---
++
++## Phase 1: Setup
++
++No project initialisation is required — this is a bug fix on an existing
++codebase. All tools, dependencies, and structure are already in place.
++
++- [x] T001 Confirm baseline: run `pytest` and note which tests currently pass (expect test_dates.py to pass with wrong assertions, test_orders.py to have no date assertions)
++
++---
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++No foundational infrastructure changes are needed. The fix is entirely in the
++serialisation layer; no schema, dependency, or config changes are required.
++
++**Checkpoint**: Proceed directly to User Story 1.
++
++---
++
++## Phase 3: User Story 1 — Correct Date in Order Response (Priority: P1) 🎯
++
++**Goal**: Every order API response returns `created_at` as `YYYY-MM-DD`
++(ISO 8601), not the current buggy `YYYY-DD-MM`.
++
++**Independent Test**: Create an order and assert `created_at == "2026-05-18"`
++(or any date where day ≠ month). Run `pytest tests/test_dates.py tests/test_orders.py -v`.
++
++### Source fixes for User Story 1
++
++- [x] T002 [P] [US1] Fix format string in `src/api/utils/dates.py` line 5: change `"%Y-%d-%m"` to `"%Y-%m-%d"`
++- [x] T003 [P] [US1] Fix format string in `src/api/routes/orders.py` line 77 (inside `create_order`): change `"%Y-%d-%m"` to `"%Y-%m-%d"`
++- [x] T004 [P] [US1] Fix format string in `src/api/routes/orders.py` line 101 (inside `get_order`): change `"%Y-%d-%m"` to `"%Y-%m-%d"`
++- [x] T005 [P] [US1] Fix format string in `src/api/routes/orders.py` line 127 (inside `_format_created_at`): change `"%Y-%d-%m"` to `"%Y-%m-%d"`
++
++### Test corrections for User Story 1
++
++- [x] T006 [P] [US1] Correct assertion in `tests/test_dates.py::test_format_order_date_basic`: change expected value from `"2025-07-03"` to `"2025-03-07"`
++- [x] T007 [P] [US1] Correct assertion in `tests/test_dates.py::test_format_order_date_end_of_year`: change expected value from `"2024-31-12"` to `"2024-12-31"`
++- [x] T008 [US1] Add `test_create_order_date_format` to `tests/test_orders.py`: POST an order, assert `body["created_at"]` matches `re.fullmatch(r"\d{4}-\d{2}-\d{2}", ...)` and that day and month are not transposed
++- [x] T009 [US1] Add `test_get_order_date_format` to `tests/test_orders.py`: GET an existing order, assert `body["created_at"]` is in `YYYY-MM-DD` format with correct day/month ordering
++
++**Checkpoint**: Run `pytest tests/test_dates.py tests/test_orders.py -v` — all tests must pass before continuing.
++
++---
++
++## Phase 4: Polish & Cross-Cutting Concerns
++
++- [x] T010 Run full test suite `pytest` to confirm no regressions across all test files
++- [x] T011 [P] Review `specs/001-fix-order-date-format/quickstart.md` and confirm manual verification steps match the fixed behaviour
++
++---
++
++## Dependencies & Execution Order
++
++### Phase Dependencies
++
++- **Setup (Phase 1)**: No dependencies — start immediately
++- **Foundational (Phase 2)**: No blocking work — proceed to Phase 3
++- **User Story 1 (Phase 3)**: No prerequisites beyond Phase 1 baseline check
++  - T002–T005 (source fixes) can all run in parallel
++  - T006–T007 (test corrections) can run in parallel with each other and with source fixes
++  - T008–T009 (new tests) should follow T002–T005 to avoid writing tests against unfixed code
++- **Polish (Phase 4)**: Depends on all Phase 3 tasks complete
++
++### Within User Story 1
++
++- T002, T003, T004, T005 — fully parallel (different lines/scopes within separate files)
++- T006, T007 — parallel with each other and with source fixes
++- T008, T009 — parallel with each other; write after source fixes are in place
++- T010 — must follow T008 and T009
++
++### Parallel Opportunities
++
++- All source-fix tasks (T002–T005) can run simultaneously
++- All test-correction tasks (T006–T007) can run simultaneously
++- New test tasks (T008–T009) can run simultaneously
++
++---
++
++## Parallel Example: User Story 1
++
++```bash
++# Run all source fixes together (different files/lines):
++Task: "Fix format string in src/api/utils/dates.py line 5"
++Task: "Fix format string in src/api/routes/orders.py line 77"
++Task: "Fix format string in src/api/routes/orders.py line 101"
++Task: "Fix format string in src/api/routes/orders.py line 127"
++
++# Run test corrections in parallel:
++Task: "Correct assertion in tests/test_dates.py::test_format_order_date_basic"
++Task: "Correct assertion in tests/test_dates.py::test_format_order_date_end_of_year"
++```
++
++---
++
++## Implementation Strategy
++
++### MVP (User Story 1 only — the only story)
++
++1. T001 — baseline check
++2. T002–T007 in parallel — fix all format strings and correct existing test assertions
++3. T008–T009 — add new date-format tests to test_orders.py
++4. **STOP and VALIDATE**: `pytest tests/test_dates.py tests/test_orders.py -v`
++5. T010 — full suite regression check
++
++### Single-pass execution (recommended for this small fix)
++
++All source fixes and test corrections (T002–T007) can be applied in a single
++editing pass since they are mechanical substitutions. New tests (T008–T009)
++follow immediately after.
++
++---
++
++## Notes
++
++- [P] tasks = different files or independent lines, no shared state
++- Tests T006–T007 correct assertions that currently encode the *wrong* behaviour — this is not a new failure, it is a pre-existing wrong expectation
++- Use a date where day ≠ month (e.g., `datetime(2026, 5, 18)`) in T008/T009 to ensure the swap bug would be visible if it regressed
++- Commit message: `fix: correct order date format to YYYY-MM-DD`
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..50e3b69 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -74,7 +74,7 @@ def create_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
+-        created_at=order.created_at.strftime("%Y-%d-%m"),
++        created_at=order.created_at.strftime("%Y-%m-%d"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+@@ -98,7 +98,7 @@ def get_order(
+         id=order.id,
+         user_id=order.user_id,
+         total=order.total,
+-        created_at=order.created_at.strftime("%Y-%d-%m"),
++        created_at=order.created_at.strftime("%Y-%m-%d"),
+         items=[
+             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
+             for i in order.items
+@@ -124,4 +124,4 @@ def add_item_inline(order: Order, sku: str, quantity: int, unit_price_dollars: f
+ 
+ 
+ def _format_created_at(dt: datetime) -> str:
+-    return dt.strftime("%Y-%d-%m")
++    return dt.strftime("%Y-%m-%d")
+diff --git a/target/src/api/utils/dates.py b/target/src/api/utils/dates.py
+index d4d9fe8..dfb1130 100644
+--- a/target/src/api/utils/dates.py
++++ b/target/src/api/utils/dates.py
+@@ -2,4 +2,4 @@ from datetime import datetime
+ 
+ 
+ def format_order_date(dt: datetime) -> str:
+-    return dt.strftime("%Y-%d-%m")
++    return dt.strftime("%Y-%m-%d")
+diff --git a/target/tests/test_dates.py b/target/tests/test_dates.py
+index a135a3e..e268141 100644
+--- a/target/tests/test_dates.py
++++ b/target/tests/test_dates.py
+@@ -5,9 +5,9 @@ from api.utils.dates import format_order_date
+ 
+ def test_format_order_date_basic():
+     dt = datetime(2025, 3, 7, 12, 0, 0)
+-    assert format_order_date(dt) == "2025-07-03"
++    assert format_order_date(dt) == "2025-03-07"
+ 
+ 
+ def test_format_order_date_end_of_year():
+     dt = datetime(2024, 12, 31, 23, 59, 59)
+-    assert format_order_date(dt) == "2024-31-12"
++    assert format_order_date(dt) == "2024-12-31"
+diff --git a/target/tests/test_orders.py b/target/tests/test_orders.py
+index afc76b3..37ccd05 100644
+--- a/target/tests/test_orders.py
++++ b/target/tests/test_orders.py
+@@ -62,3 +62,40 @@ def test_get_order_returns_owner(client):
+     )
+     assert resp.status_code == 200
+     assert resp.json()["id"] == created["id"]
++
++
++def test_create_order_date_format(client):
++    user = _make_user(client, email="datefmt_create@example.com")
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "DATECHK", "quantity": 1, "unit_price": 1.00}]},
++    )
++    assert resp.status_code == 201
++    created_at = resp.json()["created_at"]
++    parts = created_at.split("-")
++    assert len(parts) == 3
++    year, month, day = parts
++    assert len(year) == 4
++    assert 1 <= int(month) <= 12
++    assert 1 <= int(day) <= 31
++
++
++def test_get_order_date_format(client):
++    user = _make_user(client, email="datefmt_get@example.com")
++    created = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user["id"])},
++        json={"items": [{"sku": "DATECHK", "quantity": 1, "unit_price": 1.00}]},
++    ).json()
++    resp = client.get(
++        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
++    )
++    assert resp.status_code == 200
++    created_at = resp.json()["created_at"]
++    parts = created_at.split("-")
++    assert len(parts) == 3
++    year, month, day = parts
++    assert len(year) == 4
++    assert 1 <= int(month) <= 12
++    assert 1 <= int(day) <= 31
