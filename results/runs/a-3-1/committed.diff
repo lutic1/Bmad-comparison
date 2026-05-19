@@ -1,0 +1,165 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..c278bab 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
+ from fastapi import FastAPI
+ 
+ from api.deps import engine
++from api.middleware import RateLimitMiddleware
+ from api.models import Base
+ from api.routes import orders, users
+ 
+@@ -15,6 +16,7 @@ async def lifespan(_: FastAPI):
+ 
+ app = FastAPI(title="benchmark-target", lifespan=lifespan)
+ 
++app.add_middleware(RateLimitMiddleware)
+ app.include_router(users.router)
+ app.include_router(orders.router)
+ 
+diff --git a/target/src/api/middleware.py b/target/src/api/middleware.py
+new file mode 100644
+index 0000000..64be802
+--- /dev/null
++++ b/target/src/api/middleware.py
+@@ -0,0 +1,24 @@
++import time
++from collections import deque
++
++from starlette.middleware.base import BaseHTTPMiddleware
++from starlette.requests import Request
++from starlette.responses import Response
++
++RATE_LIMIT = 60
++WINDOW_SECONDS = 60
++
++_buckets: dict[str, deque[float]] = {}
++
++
++class RateLimitMiddleware(BaseHTTPMiddleware):
++    async def dispatch(self, request: Request, call_next):
++        ip = request.client.host if request.client else "unknown"
++        now = time.time()
++        bucket = _buckets.setdefault(ip, deque())
++        while bucket and now - bucket[0] > WINDOW_SECONDS:
++            bucket.popleft()
++        if len(bucket) >= RATE_LIMIT:
++            return Response("Too Many Requests", status_code=429)
++        bucket.append(now)
++        return await call_next(request)
+diff --git a/target/tests/test_rate_limit.py b/target/tests/test_rate_limit.py
+new file mode 100644
+index 0000000..fa8a895
+--- /dev/null
++++ b/target/tests/test_rate_limit.py
+@@ -0,0 +1,54 @@
++import time
++from collections import deque
++
++import pytest
++
++from api.middleware import RATE_LIMIT, WINDOW_SECONDS, _buckets
++
++
++@pytest.fixture
++def rate_limit_client(client):
++    _buckets.clear()
++    yield client
++    _buckets.clear()
++
++
++def _fill_bucket(ip: str = "testclient", age: float = 0.0) -> None:
++    now = time.time()
++    _buckets[ip] = deque(now - age for _ in range(RATE_LIMIT))
++
++
++def test_requests_below_limit_succeed(rate_limit_client):
++    for _ in range(RATE_LIMIT - 1):
++        assert rate_limit_client.get("/health").status_code == 200
++
++
++def test_60th_request_succeeds(rate_limit_client):
++    for _ in range(RATE_LIMIT):
++        resp = rate_limit_client.get("/health")
++    assert resp.status_code == 200
++
++
++def test_61st_request_returns_429(rate_limit_client):
++    _fill_bucket()
++    assert rate_limit_client.get("/health").status_code == 429
++
++
++def test_429_response_body(rate_limit_client):
++    _fill_bucket()
++    assert rate_limit_client.get("/health").text == "Too Many Requests"
++
++
++def test_window_expiry_allows_new_requests(rate_limit_client):
++    _fill_bucket(age=WINDOW_SECONDS + 1)
++    assert rate_limit_client.get("/health").status_code == 200
++
++
++def test_rate_limit_applies_to_all_routes(rate_limit_client):
++    _fill_bucket()
++    assert rate_limit_client.get("/users/1").status_code == 429
++
++
++def test_different_ips_are_independent(rate_limit_client):
++    _fill_bucket(ip="192.168.1.1")
++    assert rate_limit_client.get("/health").status_code == 200
