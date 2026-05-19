@@ -1,3 +1,7 @@
+import re
+from datetime import datetime
+
+
 def _make_user(client, email="u@example.com", name="U"):
     resp = client.post("/users", json={"email": email, "name": name})
     assert resp.status_code == 201
@@ -62,3 +66,19 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_create_order_returns_iso_date(client):
+    user = _make_user(client, email="date@example.com")
+    before = datetime.utcnow().date()
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "X", "quantity": 1, "unit_price": 1.00}]},
+    )
+    after = datetime.utcnow().date()
+    assert resp.status_code == 201
+    created_at = resp.json()["created_at"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", created_at)
+    parsed = datetime.strptime(created_at, "%Y-%m-%d").date()
+    assert before <= parsed <= after
