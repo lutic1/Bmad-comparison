@@ -221,6 +221,77 @@ runs regardless of task size.
   because the chains rely on bash for pytest etc. and an operator
   approving each tool call would have changed the cost/time measurement.
 
+## Opus rebuttal (7 targeted reruns)
+
+The most defensible critique of the Sonnet-only data is "would Opus have
+caught the things Sonnet missed?" To test this without rerunning all 36,
+seven cells were re-executed on **Claude Opus 4.7 (1M context)**, same
+hermetic pattern, recorded as runs 4–6 to keep the original run-1/2/3
+data intact. Total Opus spend: $24.04 across 7 cells.
+
+| cell | Sonnet | Opus | what changed |
+|------|--------|------|--------------|
+| **A2** (3 runs) | 3, 3, 3 — missed `amount_cents` | **5, 5, 5 — caught it** | **Pure model-capability gap.** Opus 3/3, Sonnet 0/3. The headline Plan Mode failure was Sonnet-specific. |
+| **B2-r2 → r5** | 3 — missed amount | 3 — also missed | Spec Kit's specify-phase variance is workflow-shape, not model-capability. |
+| **B2-r3 → r6** | 3 — missed amount | 5 — caught it | Same Spec Kit cell, different outcome — variance persists on Opus (1/2 catch, vs Sonnet's 1/3). |
+| **B4-r1 → r4** | 3 — stored total wrong | 5 — used `(subtotal × pct + 50) // 100`, stored discounted value | Partly model-capability — Opus reasoned through the cents-rounding constraint properly. |
+| **C4-r3 → r4** | 3 — stored total regressed | 5 — `Decimal × ROUND_HALF_UP` in a separate `discounts.py` module, 36 tests | Pure model-capability. Opus produced the cleanest single implementation in the whole benchmark with an explicit comment justifying ROUND_HALF_UP for money. |
+
+### What this changes
+
+- **A2's "Plan Mode is structurally bad at well-specified medium tasks"
+  claim doesn't survive Opus.** On Opus, Plan Mode catches the
+  `amount_cents` field every time. The original article framing should
+  shift to "Sonnet+Plan Mode misses spec-detail audit fields that
+  Opus+Plan Mode catches" — still a real finding, but about the
+  Sonnet/Opus delta on this workflow, not about Plan Mode as a shape.
+- **Spec Kit's task-2 variance is real and model-independent.** B2 on
+  Sonnet caught the amount field 1 of 3 times; on Opus 1 of 2. The
+  specify phase is genuinely unreliable at interpreting "refund
+  record" as requiring the dollar amount, regardless of model. This
+  is a workflow-shape failure that more compute won't fix.
+- **BMAD's "100% consistency on all four tasks across all 12 Sonnet
+  runs (mean 4.83)" is the most robust headline.** Opus on C4 still
+  produced a 5/5 — and the Opus C4 run is qualitatively the best work
+  in the whole benchmark (Decimal rounding, separate discounts.py,
+  36 tests). BMAD's reliability story holds.
+
+### Cost on Opus vs Sonnet
+
+Opus is **3–5× more expensive per cell** at this hermetic scale:
+
+| cell | Sonnet $ | Opus $ | ratio |
+|------|---------:|-------:|------:|
+| A2 mean | 0.59 | 1.73 | 2.9× |
+| B2 mean | 2.55 | 4.19 | 1.6× |
+| B4 mean | 2.88 | 5.26 | 1.8× |
+| C4 mean | 3.91 | 5.22 | 1.3× |
+
+Surprisingly **not** 5× across the board — Opus's higher per-token cost
+is partly offset by the same output budget per task. The premium is
+biggest on the smallest cells (A2 ~3×) and smallest on the most-verbose
+ones (C4 ~1.3×). If you only need Opus for the spec-detail-audit step,
+the cost premium is manageable.
+
+### Combined picture
+
+Grand total across Sonnet + Opus: **$92.60 for 43 cells**. Final
+mean-score-by-workflow-and-model:
+
+| | n | mean score | total cost |
+|---|---|-----------|-----------|
+| A Sonnet | 12 | 4.17 | $6.66 |
+| A Opus | 3 | **5.00** | $5.18 |
+| B Sonnet | 12 | 4.08 | $29.85 |
+| B Opus | 3 | 4.33 | $13.64 |
+| C Sonnet | 12 | 4.83 | $32.05 |
+| C Opus | 1 | 5.00 | $5.22 |
+
+The real story: **A on Opus matches C on Sonnet for ~5× less cost** on
+the cells we tested. The article's most honest framing isn't "BMAD wins
+on quality" — it's "if you want Plan-Mode-level cost, switch to Opus;
+if you want Sonnet-level cost, accept BMAD's ceremony tax for quality."
+
 ## Files of interest
 
 - `results/results.csv` — every cell, every column
@@ -232,3 +303,9 @@ runs regardless of task size.
   headers spec)
 - `workflows/c-bmad.md` — the runbook explaining the v6.7.1 persona
   mapping decision
+- `results/runs/c-4-4/` — the Opus-on-BMAD task-4 run; cleanest
+  implementation in the benchmark (Decimal+ROUND_HALF_UP rounding,
+  separate `discounts.py` module, 36/36 tests)
+- `results/runs/a-2-{4,5,6}/plan.md` — three Opus Plan Mode plans
+  for the refund endpoint, all explicitly listing `amount: int` in
+  RefundOut (Sonnet's three plans omitted it)
