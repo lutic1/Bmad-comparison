@@ -74,7 +74,7 @@ def create_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
-        created_at=order.created_at.strftime("%Y-%d-%m"),
+        created_at=order.created_at.strftime("%Y-%m-%d"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
@@ -98,7 +98,7 @@ def get_order(
         id=order.id,
         user_id=order.user_id,
         total=order.total,
-        created_at=order.created_at.strftime("%Y-%d-%m"),
+        created_at=order.created_at.strftime("%Y-%m-%d"),
         items=[
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
@@ -124,4 +124,4 @@ def add_item_inline(order: Order, sku: str, quantity: int, unit_price_dollars: f
 
 
 def _format_created_at(dt: datetime) -> str:
-    return dt.strftime("%Y-%d-%m")
+    return dt.strftime("%Y-%m-%d")

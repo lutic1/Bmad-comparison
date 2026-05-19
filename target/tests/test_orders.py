@@ -1,3 +1,7 @@
+import re
+from datetime import datetime
+
+
 def _make_user(client, email="u@example.com", name="U"):
     resp = client.post("/users", json={"email": email, "name": name})
     assert resp.status_code == 201
@@ -62,3 +66,20 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_order_created_at_is_iso_date(client):
+    user = _make_user(client, email="iso@example.com")
+    created = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "X", "quantity": 1, "unit_price": 1.00}]},
+    ).json()
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", created["created_at"])
+    datetime.strptime(created["created_at"], "%Y-%m-%d")
+
+    fetched = client.get(
+        f"/orders/{created['id']}", headers={"X-User-Id": str(user["id"])}
+    ).json()
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", fetched["created_at"])
+    datetime.strptime(fetched["created_at"], "%Y-%m-%d")
