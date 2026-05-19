@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from api.deps import engine
 from api.models import Base
-from api.routes import orders, users
+from api.routes import orders, refunds, users
 
 
 @asynccontextmanager
@@ -17,6 +17,7 @@ app = FastAPI(title="benchmark-target", lifespan=lifespan)
 
 app.include_router(users.router)
 app.include_router(orders.router)
+app.include_router(refunds.router)
 
 
 @app.get("/health")

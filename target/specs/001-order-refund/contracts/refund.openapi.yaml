@@ -1,0 +1,86 @@
+openapi: 3.0.3
+info:
+  title: Order Refund
+  version: "1.0.0"
+  description: |
+    Contract for the `POST /orders/{order_id}/refund` endpoint added by
+    the order-refund feature.
+
+paths:
+  /orders/{order_id}/refund:
+    post:
+      summary: Refund an order
+      operationId: refundOrder
+      tags: [refunds]
+      parameters:
+        - in: path
+          name: order_id
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - in: header
+          name: X-User-Id
+          required: true
+          description: Caller identity (existing service convention).
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Refund created. Order is now marked refunded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refund" }
+        "400":
+          description: |
+            Refund window expired — the order was created more than
+            30 days before the request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { detail: "refund window expired" }
+        "401":
+          description: Missing or unknown `X-User-Id`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Order exists but does not belong to the caller.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { detail: "forbidden" }
+        "404":
+          description: Order not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { detail: "order not found" }
+        "409":
+          description: Order has already been refunded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { detail: "order already refunded" }
+
+components:
+  schemas:
+    Refund:
+      type: object
+      required: [id, order_id, amount, created_at]
+      properties:
+        id:
+          type: integer
+          description: Refund record id.
+        order_id:
+          type: integer
+          description: Id of the refunded order.
+        amount:
+          type: integer
+          description: Refund amount in integer cents (equals order total).
+        created_at:
+          type: string
+          description: ISO-8601 timestamp the refund was issued (UTC).
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
