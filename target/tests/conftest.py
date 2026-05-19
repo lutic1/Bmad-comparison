@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import api.rate_limit as rl
 from api import deps
 from api.main import app
 from api.models import Base
@@ -40,3 +41,4 @@ def client(db_engine):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+    rl._store.clear()

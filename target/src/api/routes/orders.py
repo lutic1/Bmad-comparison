@@ -1,13 +1,15 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+
+from api.rate_limit import check_rate_limit
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
 from api.models import Order, OrderItem, User
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+router = APIRouter(prefix="/orders", tags=["orders"], dependencies=[Depends(check_rate_limit)])
 
 
 def _to_cents(dollars: float) -> int:

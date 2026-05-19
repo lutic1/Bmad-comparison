@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
+
+from api.rate_limit import check_rate_limit
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from api.deps import get_db
 from api.models import User
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(check_rate_limit)])
 
 
 class UserCreate(BaseModel):
