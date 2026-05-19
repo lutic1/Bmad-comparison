@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
-from api.models import Order, OrderItem, User
+from api.models import DiscountCode, Order, OrderItem, User
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -22,6 +22,7 @@ class OrderItemIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderItemIn]
+    discount_code: str | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -39,6 +40,8 @@ class OrderOut(BaseModel):
     total: int
     created_at: str
     items: list[OrderItemOut]
+    discount_code: str | None = None
+    discount_pct: int | None = None
 
 
 @router.post("", response_model=OrderOut, status_code=201)
@@ -49,6 +52,16 @@ def create_order(
 ) -> OrderOut:
     if not payload.items:
         raise HTTPException(status_code=400, detail="order must have at least one item")
+
+    discount_pct = None
+    applied_code = None
+    if payload.discount_code is not None:
+        code_key = payload.discount_code.strip().upper()
+        dc = db.query(DiscountCode).filter(DiscountCode.code == code_key).one_or_none()
+        if dc is None:
+            raise HTTPException(status_code=422, detail=f"invalid discount code: {payload.discount_code!r}")
+        discount_pct = dc.percentage
+        applied_code = dc.code
 
     order = Order(user_id=user.id, total=0)
     db.add(order)
@@ -66,7 +79,12 @@ def create_order(
         db.add(line)
         total += unit_price_cents * item.quantity
 
+    if discount_pct is not None:
+        total = round(total * (1 - discount_pct / 100))
+
     order.total = total
+    order.discount_code = applied_code
+    order.discount_pct = discount_pct
     db.commit()
     db.refresh(order)
 
@@ -79,6 +97,8 @@ def create_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+        discount_code=order.discount_code,
+        discount_pct=order.discount_pct,
     )
 
 
@@ -103,6 +123,8 @@ def get_order(
             OrderItemOut(sku=i.sku, quantity=i.quantity, unit_price=i.unit_price)
             for i in order.items
         ],
+        discount_code=order.discount_code,
+        discount_pct=order.discount_pct,
     )
 
 

@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from api import deps
 from api.main import app
-from api.models import Base
+from api.models import Base, DiscountCode
 
 
 @pytest.fixture
@@ -40,3 +40,19 @@ def client(db_engine):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def db(db_engine):
+    session = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def discount_codes(db):
+    for code, pct in [("SAVE5", 5), ("SAVE10", 10), ("SAVE20", 20)]:
+        db.add(DiscountCode(code=code, percentage=pct))
+    db.commit()
