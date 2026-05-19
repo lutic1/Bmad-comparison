@@ -1,0 +1,165 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..adf20bc 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -1,9 +1,10 @@
+ from contextlib import asynccontextmanager
+ 
+-from fastapi import FastAPI
++from fastapi import Depends, FastAPI
+ 
+ from api.deps import engine
+ from api.models import Base
++from api.rate_limit import rate_limit
+ from api.routes import orders, users
+ 
+ 
+@@ -13,7 +14,7 @@ async def lifespan(_: FastAPI):
+     yield
+ 
+ 
+-app = FastAPI(title="benchmark-target", lifespan=lifespan)
++app = FastAPI(title="benchmark-target", lifespan=lifespan, dependencies=[Depends(rate_limit)])
+ 
+ app.include_router(users.router)
+ app.include_router(orders.router)
+diff --git a/target/src/api/rate_limit.py b/target/src/api/rate_limit.py
+new file mode 100644
+index 0000000..c002f44
+--- /dev/null
++++ b/target/src/api/rate_limit.py
+@@ -0,0 +1,29 @@
++import threading
++import time
++
++from fastapi import HTTPException, Request
++
++WINDOW = 60   # seconds
++LIMIT = 60    # requests per window
++
++_lock = threading.Lock()
++_counters: dict[str, tuple[int, float]] = {}
++
++
++def rate_limit(request: Request) -> None:
++    key = request.headers.get("x-user-id") or (
++        request.client.host if request.client else "unknown"
++    )
++    now = time.monotonic()
++    with _lock:
++        count, window_start = _counters.get(key, (0, now))
++        if now - window_start >= WINDOW:
++            count, window_start = 0, now
++        if count >= LIMIT:
++            retry_after = int(WINDOW - (now - window_start))
++            raise HTTPException(
++                status_code=429,
++                detail="rate limit exceeded",
++                headers={"Retry-After": str(retry_after)},
++            )
++        _counters[key] = (count + 1, window_start)
+diff --git a/target/tests/test_rate_limit.py b/target/tests/test_rate_limit.py
+new file mode 100644
+index 0000000..91504d8
+--- /dev/null
++++ b/target/tests/test_rate_limit.py
+@@ -0,0 +1,44 @@
++import pytest
++
++import api.rate_limit as rl
++
++
++@pytest.fixture(autouse=True)
++def patch_rate_limit(monkeypatch):
++    monkeypatch.setattr(rl, "LIMIT", 2)
++    rl._counters.clear()
++    yield
++    rl._counters.clear()
++
++
++def test_requests_within_limit_succeed(client):
++    resp1 = client.get("/health")
++    resp2 = client.get("/health")
++    assert resp1.status_code == 200
++    assert resp2.status_code == 200
++
++
++def test_request_exceeding_limit_returns_429(client):
++    client.get("/health")
++    client.get("/health")
++    resp = client.get("/health")
++    assert resp.status_code == 429
++    assert resp.json()["detail"] == "rate limit exceeded"
++    assert "retry-after" in resp.headers
++
++
++def test_different_users_have_independent_limits(client):
++    # Exhaust user 1's limit
++    client.get("/health", headers={"X-User-Id": "1"})
++    client.get("/health", headers={"X-User-Id": "1"})
++    assert client.get("/health", headers={"X-User-Id": "1"}).status_code == 429
++
++    # User 2 is unaffected
++    assert client.get("/health", headers={"X-User-Id": "2"}).status_code == 200
++
++
++def test_anonymous_requests_are_rate_limited(client):
++    client.get("/health")
++    client.get("/health")
++    resp = client.get("/health")
++    assert resp.status_code == 429
