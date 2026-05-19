@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from api.deps import engine
 from api.models import Base
+from api.middleware.rate_limit import RateLimitMiddleware
 from api.routes import orders, users
 
 
@@ -17,6 +18,7 @@ app = FastAPI(title="benchmark-target", lifespan=lifespan)
 
 app.include_router(users.router)
 app.include_router(orders.router)
+app.add_middleware(RateLimitMiddleware)
 
 
 @app.get("/health")
