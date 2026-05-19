@@ -221,7 +221,7 @@ cat > "$ART_DIR/run-meta.json" <<EOF
   "prompt_hash": "$PROMPT_HASH",
   "session_id": "$SESSION_ID",
   "model": "$MODEL",
-  "bare_mode": true,
+  "hermetic_mode": true,
   "context_source": "target_only",
   "duration_seconds": $DURATION,
   "plan_call_cost_usd": $PLAN_COST,
@@ -239,6 +239,24 @@ EOF
 echo
 echo "captured: $(ls "$ART_DIR" | tr '\n' ' ')"
 echo "duration: ${DURATION}s   total cost: \$${TOTAL_COST}"
+
+# --- 5b. commit workflow's edits on the run branch ------------------------
+# Without this, the working-tree edits leak across branch switches when
+# the operator returns to main. Commit only what's under target/; the
+# harness artifacts under results/ belong on main and are committed
+# there in a separate operator step.
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain target/)" ]]; then
+    git -C "$REPO_ROOT" add target/
+    git -C "$REPO_ROOT" \
+        -c user.name="claude-bench" \
+        -c user.email="claude-bench@local" \
+        commit -m "$BRANCH: workflow output
+
+Captured by harness/run_a_scripted.sh. See results/runs/a-${TASK}-${RUN}/
+on main for plan.md, JSON cost transcripts, and run-meta.json." \
+        >/dev/null
+    echo "→ committed workflow edits on $BRANCH"
+fi
 
 # --- 6. record row --------------------------------------------------------
 if [[ "$RECORD" == 0 ]]; then
@@ -262,7 +280,7 @@ fi
     --total-tokens-input "$TOTAL_IN" \
     --total-tokens-output "$TOTAL_OUT" \
     --model "$MODEL" \
-    --bare-mode true \
+    --hermetic-mode true \
     --context-source target_only \
     --score "$SCORE" \
     --notes "$NOTES"

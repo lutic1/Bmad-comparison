@@ -17,7 +17,7 @@ Usage:
         --plan-cost-usd 0.41 --plan-tokens-input 12345 --plan-tokens-output 678 \\
         --execute-cost-usd 0.22 --execute-tokens-input 5678 --execute-tokens-output 234 \\
         --prompt-hash sha256:abcd... \\
-        --model sonnet --bare-mode true --context-source target_only \\
+        --model sonnet --hermetic-mode true --context-source target_only \\
         --score 4 --notes "happy-path, no scope creep"
 """
 
@@ -62,7 +62,7 @@ CSV_COLUMNS = [
     "tokens_output",
     "cost_usd",
     "model",
-    "bare_mode",
+    "hermetic_mode",
     "context_source",
     "subjective_score",
     "notes",
@@ -171,6 +171,21 @@ def print_workflow_prompt(workflow: str, task: int) -> None:
     print()
 
 
+def _is_workflow_path(path: str) -> bool:
+    """A diff entry counts as workflow output only if the workflow
+    actually produced it. Excludes:
+      - the guardrails CLAUDE.md the runbook copies into target/
+      - any harness artifact under results/
+      - anything outside target/ (e.g. the operator editing a runbook
+        mid-run)
+    """
+    if not path.startswith("target/"):
+        return False
+    if path == "target/CLAUDE.md":
+        return False
+    return True
+
+
 def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
     output = subprocess.run(
         ["git", "diff", f"{base}...HEAD", "--numstat"],
@@ -201,6 +216,8 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
             if len(parts) < 3:
                 continue
             a, r, path = parts[0], parts[1], parts[2]
+            if not _is_workflow_path(path):
+                continue
             files.add(path)
             if a.isdigit():
                 added += int(a)
@@ -208,7 +225,7 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
                 removed += int(r)
 
     for path in untracked.splitlines():
-        if path:
+        if path and _is_workflow_path(path):
             files.add(path)
 
     return {
@@ -360,7 +377,7 @@ def main() -> int:
     parser.add_argument("--total-tokens-input", type=int)
     parser.add_argument("--total-tokens-output", type=int)
     parser.add_argument("--model", type=str, default="")
-    parser.add_argument("--bare-mode", type=str, default="")
+    parser.add_argument("--hermetic-mode", type=str, default="")
     parser.add_argument("--context-source", type=str, default="")
     parser.add_argument("--score", type=int)
     parser.add_argument("--notes", type=str, default="")
@@ -451,7 +468,7 @@ def main() -> int:
         score = args.score
         notes = args.notes
         model = args.model
-        bare_mode = args.bare_mode
+        hermetic_mode = args.hermetic_mode
         context_source = args.context_source
         prompt_hash = args.prompt_hash
     else:
@@ -469,7 +486,7 @@ def main() -> int:
         score = prompt_score()
         notes = prompt("Notes (one sentence — what defined the score)")
         model = ""
-        bare_mode = ""
+        hermetic_mode = ""
         context_source = ""
         prompt_hash = ""
 
@@ -497,7 +514,7 @@ def main() -> int:
         "tokens_output": total_out,
         "cost_usd": total_cost,
         "model": model,
-        "bare_mode": bare_mode,
+        "hermetic_mode": hermetic_mode,
         "context_source": context_source,
         "subjective_score": score,
         "notes": notes,
