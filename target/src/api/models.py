@@ -36,6 +36,7 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
+    refund: Mapped["Refund | None"] = relationship(back_populates="order", uselist=False)
 
 
 class OrderItem(Base):
@@ -48,3 +49,14 @@ class OrderItem(Base):
     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="items")
+
+
+class Refund(Base):
+    __tablename__ = "refunds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True, nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    refunded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    order: Mapped[Order] = relationship(back_populates="refund")
