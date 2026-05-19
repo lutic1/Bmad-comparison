@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from api.deps import engine
+from api.middleware.rate_limiter import RateLimiterMiddleware
 from api.models import Base
 from api.routes import orders, users
 
@@ -14,6 +15,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="benchmark-target", lifespan=lifespan)
+
+app.add_middleware(RateLimiterMiddleware, limit=100, window_seconds=60)
 
 app.include_router(users.router)
 app.include_router(orders.router)
