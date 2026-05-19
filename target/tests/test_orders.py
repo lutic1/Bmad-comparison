@@ -62,3 +62,90 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_refund_requires_auth(client):
+    user = _make_user(client, email="refauth@example.com")
+    order = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 5.00}]},
+    ).json()
+    resp = client.post(f"/orders/{order['id']}/refund")
+    assert resp.status_code == 401
+
+
+def test_refund_order_not_found(client):
+    user = _make_user(client, email="refnotfound@example.com")
+    resp = client.post("/orders/99999/refund", headers={"X-User-Id": str(user["id"])})
+    assert resp.status_code == 404
+
+
+def test_refund_forbidden_for_other_user(client):
+    owner = _make_user(client, email="refowner@example.com")
+    other = _make_user(client, email="refother@example.com")
+    order = client.post(
+        "/orders",
+        headers={"X-User-Id": str(owner["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 5.00}]},
+    ).json()
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(other["id"])}
+    )
+    assert resp.status_code == 403
+
+
+def test_refund_success(client):
+    user = _make_user(client, email="refsuccess@example.com")
+    order = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 5.00}]},
+    ).json()
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["order_id"] == order["id"]
+    assert "refunded_at" in body
+
+
+def test_refund_already_refunded(client):
+    user = _make_user(client, email="refdupe@example.com")
+    order = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 5.00}]},
+    ).json()
+    client.post(f"/orders/{order['id']}/refund", headers={"X-User-Id": str(user["id"])})
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 409
+
+
+def test_refund_expired_window(client, db_engine):
+    from datetime import datetime, timedelta
+
+    from sqlalchemy.orm import sessionmaker
+
+    from api.models import Order
+
+    user = _make_user(client, email="refexpired@example.com")
+    order = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user["id"])},
+        json={"items": [{"sku": "A", "quantity": 1, "unit_price": 5.00}]},
+    ).json()
+
+    Session = sessionmaker(bind=db_engine)
+    with Session() as db:
+        row = db.get(Order, order["id"])
+        row.created_at = datetime.utcnow() - timedelta(days=31)
+        db.commit()
+
+    resp = client.post(
+        f"/orders/{order['id']}/refund", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 400
