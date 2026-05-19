@@ -33,13 +33,19 @@ in a single hermetic session via `--resume`.
    "Sonnet+Plan Mode is unreliable on spec-detail audit fields;
    Opus+Plan Mode catches them every time we tested."
 
-2. **Spec Kit's specify phase has model-independent variance on the
-   same failure mode.** Spec Kit caught the same `amount_cents` field
-   1/3 times on Sonnet (FR-008 explicit in run 1, ruled out of scope
-   in run 3) and 1/2 times on Opus. Switching to a stronger model did
-   not stabilise the interpretation. This is the workflow-shape
-   failure mode that matters: a heavier ceremony than Plan Mode that
-   nonetheless can't reliably surface a field the spec implies.
+2. **Spec Kit's specify-phase variance is real *and is fixable with
+   the optional `/speckit-clarify` gate*.** Spec Kit caught the
+   `amount_cents` field 1/3 times on Sonnet, 1/2 times on Opus —
+   model-independent variance. But when we ran the optional
+   `/speckit-clarify` skill between `specify` and `plan` on three
+   Opus B2 reruns, the clarify phase explicitly surfaced "the spec
+   says the system returns 'the refund record' but does not name its
+   attributes" as Question 1 every time, and the implementation
+   shipped the amount field **3 of 3**. Real article finding: the
+   default Spec Kit pipeline omits a load-bearing gate by treating
+   clarify as "optional." If you're going to spend on Spec Kit
+   ceremony, run clarify too — it's the difference between 33% and
+   100% on this failure mode for ~$4.50/cell extra.
 
 3. **BMAD's quality story is the most robust.** Sonnet+BMAD scored
    mean **4.83/5** across all 12 cells with 9 of 12 at perfect 5/5
@@ -313,11 +319,14 @@ data intact. Total Opus spend: $24.04 across 7 cells.
   a real finding with a 70-point gap, but about the Sonnet/Opus
   delta on this workflow, not about Plan Mode as a shape, and not
   about Sonnet always failing.
-- **Spec Kit's task-2 variance is real and model-independent.** B2 on
-  Sonnet caught the amount field 1 of 3 times; on Opus 1 of 2. The
-  specify phase is genuinely unreliable at interpreting "refund
-  record" as requiring the dollar amount, regardless of model. This
-  is a workflow-shape failure that more compute won't fix.
+- **Spec Kit's task-2 variance is real, model-independent, AND
+  fixable.** B2 on Sonnet caught the amount field 1 of 3 times; on
+  Opus 1 of 2. But **B2 + the optional `/speckit-clarify` skill on
+  Opus caught it 3 of 3**, with clarify Q1 explicitly surfacing
+  "what are the refund record's attributes?" every time. The default
+  Spec Kit pipeline omits clarify; the actual lesson is "if you opt
+  in to clarify between specify and plan, the variance goes away on
+  this failure mode at ~$4.50/cell extra cost."
 - **BMAD's "100% consistency on all four tasks across all 12 Sonnet
   runs (mean 4.83)" is the most robust headline.** Opus on C4 still
   produced a 5/5 — and the Opus C4 run is qualitatively the best work
@@ -347,7 +356,7 @@ After commissioning 9 additional A-Opus runs (A1, A3, A4 each ×3) and
 7 extra A2-Opus runs (bringing A2-Opus to n=10), we have **full n=3
 parity** between A-Sonnet and A-Opus across all 4 tasks, plus
 **n=10 on the headline A2 cell**. Grand total across Sonnet + Opus:
-**$134.63 for 66 cells**.
+**$148.56 for 69 cells**.
 
 Per-task A comparison (n=3 each, except A2 which is n=3 vs n=10):
 
@@ -426,20 +435,23 @@ the reader before they decide whether to act on the report.
   misses the field. We have 0/10 so far; one miss in n=20 would
   reframe the Opus rate as "very reliable but not guaranteed."
 
-### Finding 2 — "Spec Kit specify-phase variance is model-independent"
+### Finding 2 — "Spec Kit specify-phase variance is fixable via the optional /speckit-clarify gate"
 
-- **Cheapest break:** n=10 on B2-Opus. Current 1/2 is the thinnest
-  sample in the whole benchmark. Eight more Opus B2 runs (~$40) would
-  tell us whether the catch rate on Opus is meaningfully different
-  from Sonnet's 1/3.
-- **Cheap alternative:** add a `/speckit-clarify` invocation between
-  specify and plan on three B2 reruns. Spec Kit ships clarify as an
-  optional skill; if it forces the agent to surface the missing field
-  3/3 times, then "specify-phase variance" becomes "specify-phase
-  needs the optional clarify gate," which is a much more actionable
-  finding.
-- **What would refute it entirely:** B2 catch-rate diverging sharply
-  between models (e.g. Opus 5/5, Sonnet 0/5).
+- ~~Cheap alternative: add `/speckit-clarify` invocation between
+  specify and plan on three B2 reruns~~ **DONE.** 3/3 of those reruns
+  (Opus + clarify) caught the `amount_cents` field. The clarify
+  phase surfaced the missing-attribute question as **Question 1
+  every time** ("the spec says the system returns 'the refund
+  record' but does not name its attributes"), and that propagated
+  into plan → tasks → implementation. The "specify-phase variance"
+  finding is more precisely restated as: **Spec Kit's default
+  pipeline is missing a load-bearing gate; if you opt-in to clarify,
+  the variance disappears (at least on this failure mode)**. Cost:
+  $13.92 across 3 cells.
+- **Cheapest remaining break:** n=5 of "B2 Sonnet + clarify" to
+  confirm the gate works on the cheaper model too (~$15).
+- **What would refute it entirely:** any B2-with-clarify run that
+  ships RefundOut without the amount field. We have 0/3 so far.
 
 ### Finding 3 — "BMAD's quality reliability is the most robust"
 
@@ -493,7 +505,7 @@ the reader before they decide whether to act on the report.
    then ~$5 in cell reruns on Plan-Mode-Sonnet).
 
 Total to get to a defensible n: roughly **$65 extra plus one second
-rater's afternoon**, on top of the $134.63 already spent. Each of the
+rater's afternoon**, on top of the $148.56 already spent. Each of the
 four would meaningfully change my confidence in the corresponding
 headline; none of them are strictly necessary to publish, but the
 first one is the cheapest credibility-per-dollar item in the whole
