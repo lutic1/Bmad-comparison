@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_db
 from api.models import User
+from api.rate_limit import DEFAULT_LIMIT, DEFAULT_WINDOW, rate_limit_ip
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -22,7 +23,12 @@ class UserRead(BaseModel):
         from_attributes = True
 
 
-@router.post("", response_model=UserRead, status_code=201)
+@router.post(
+    "",
+    response_model=UserRead,
+    status_code=201,
+    dependencies=[Depends(rate_limit_ip(DEFAULT_LIMIT, DEFAULT_WINDOW))],
+)
 def create_user(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     existing = db.query(User).filter(User.email == payload.email).one_or_none()
     if existing is not None:
@@ -34,7 +40,11 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     return user
 
 
-@router.get("/{user_id}", response_model=UserRead)
+@router.get(
+    "/{user_id}",
+    response_model=UserRead,
+    dependencies=[Depends(rate_limit_ip(DEFAULT_LIMIT, DEFAULT_WINDOW))],
+)
 def get_user(user_id: int, db: Session = Depends(get_db)) -> User:
     user = db.get(User, user_id)
     if user is None:

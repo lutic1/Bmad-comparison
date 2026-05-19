@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_current_user, get_db
 from api.models import Order, OrderItem, User
+from api.rate_limit import DEFAULT_LIMIT, DEFAULT_WINDOW, rate_limit_user
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -41,7 +42,12 @@ class OrderOut(BaseModel):
     items: list[OrderItemOut]
 
 
-@router.post("", response_model=OrderOut, status_code=201)
+@router.post(
+    "",
+    response_model=OrderOut,
+    status_code=201,
+    dependencies=[Depends(rate_limit_user(DEFAULT_LIMIT, DEFAULT_WINDOW))],
+)
 def create_order(
     payload: OrderCreate,
     db: Session = Depends(get_db),
@@ -82,7 +88,11 @@ def create_order(
     )
 
 
-@router.get("/{order_id}", response_model=OrderOut)
+@router.get(
+    "/{order_id}",
+    response_model=OrderOut,
+    dependencies=[Depends(rate_limit_user(DEFAULT_LIMIT, DEFAULT_WINDOW))],
+)
 def get_order(
     order_id: int,
     db: Session = Depends(get_db),
