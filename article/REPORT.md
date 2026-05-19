@@ -19,6 +19,43 @@ per run, isolated session) without literally being a UI session.
 Workflows B and C run end-to-end through their respective skill chains
 in a single hermetic session via `--resume`.
 
+## TL;DR — three findings worth quoting
+
+1. **The most-cited Plan Mode failure was a Sonnet ceiling, not a
+   workflow flaw.** On the refund-endpoint task, Sonnet+Plan Mode
+   missed the explicit `amount_cents` acceptance criterion in **all 3**
+   runs (RefundOut shipped without the amount field). On Opus, the
+   same workflow caught it in **all 3** reruns. The original article
+   framing — "Plan Mode is structurally bad at well-specified medium
+   tasks" — doesn't survive the model swap. The honest framing is
+   "Sonnet+Plan Mode misses spec-detail audit fields that Opus+Plan
+   Mode catches."
+
+2. **Spec Kit's specify phase has model-independent variance on the
+   same failure mode.** Spec Kit caught the same `amount_cents` field
+   1/3 times on Sonnet (FR-008 explicit in run 1, ruled out of scope
+   in run 3) and 1/2 times on Opus. Switching to a stronger model did
+   not stabilise the interpretation. This is the workflow-shape
+   failure mode that matters: a heavier ceremony than Plan Mode that
+   nonetheless can't reliably surface a field the spec implies.
+
+3. **BMAD's quality story is the most robust.** Sonnet+BMAD scored
+   mean **4.83/5** across all 12 cells with 9 of 12 at perfect 5/5
+   (lowest variance of any workflow). The single cleanest
+   implementation in the whole benchmark is Opus+BMAD on task 4
+   (`results/runs/c-4-4/`) — uses `Decimal × ROUND_HALF_UP` with a
+   comment justifying the choice for money, extracts an `apply_discount`
+   helper to a separate `discounts.py` module, and ships 36 tests.
+   You pay ~5× Plan-Mode cost on Sonnet, but the quality reliability
+   is real and the artifacts (PRD, architecture, party-mode sweep)
+   are independently quotable.
+
+The article's most honest cost framing isn't "BMAD wins on quality,
+Plan Mode wins on cost." It's: **if you'll spend Sonnet+BMAD money
+($2.67/cell), you could instead spend Opus+Plan Mode money
+($1.73/cell on A2) and get comparable quality at lower cost.** Model
+choice is the lever the original benchmark held constant.
+
 ## Headline numbers
 
 | | runs | total cost | total wall-clock | mean cost/run | mean dur/run | mean score |
