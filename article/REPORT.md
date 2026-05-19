@@ -21,16 +21,17 @@ in a single hermetic session via `--resume`.
 
 ## TL;DR — three findings worth quoting
 
-1. **The most-cited Plan Mode failure was a Sonnet ceiling, not a
-   workflow flaw.** On the refund-endpoint task, Sonnet+Plan Mode
-   missed the explicit `amount_cents` acceptance criterion in **3 of
-   3** runs (RefundOut shipped without the amount field). On Opus, the
-   same workflow caught it in **10 of 10** runs (n=10 deliberately
-   targeted at this cell to firm up the headline). The original article
-   framing — "Plan Mode is structurally bad at well-specified medium
-   tasks" — doesn't survive the model swap. The honest framing is
-   "Sonnet+Plan Mode misses spec-detail audit fields that Opus+Plan
-   Mode catches reliably."
+1. **Opus reliably catches an acceptance criterion Sonnet misses
+   most of the time.** On the refund-endpoint task, after extending
+   to n=10 on both models: Sonnet+Plan Mode caught the explicit
+   `amount_cents` field in **3 of 10** runs (30%); Opus+Plan Mode
+   caught it in **10 of 10** (100%). The original 0/3 vs 3/3
+   "Sonnet structurally fails" framing was a small-sample artifact —
+   Sonnet does occasionally catch the field. But the model gap is
+   real and clean at n=10: Opus has a ~70-percentage-point advantage
+   on this specific spec-detail-audit task. The honest framing is
+   "Sonnet+Plan Mode is unreliable on spec-detail audit fields;
+   Opus+Plan Mode catches them every time we tested."
 
 2. **Spec Kit's specify phase has model-independent variance on the
    same failure mode.** Spec Kit caught the same `amount_cents` field
@@ -123,16 +124,32 @@ spicy findings:
 
 ## Run-to-run consistency
 
-This is one of the strongest findings:
+The first-three-runs picture (the original n=3 data):
 
 | | task 1 scores | task 2 scores | task 3 scores | task 4 scores |
 |---|---------------|---------------|---------------|---------------|
-| A | 5,5,5 (σ=0) | **3,3,3 (σ=0)** | 4,4,5 | 5,4,4 |
+| A | 5,5,5 (σ=0) | 3,3,3 | 4,4,5 | 5,4,4 |
 | B | 4,5,4 | 5,3,3 | 4,5,5 | 3,4,4 |
 | C | 5,5,5 (σ=0) | 5,5,5 (σ=0) | 5,5,5 (σ=0) | 5,5,3 |
 
-C has the lowest variance across the board, with **9 of 12 runs at
-exactly 5/5**. A is consistent on the easy and hard ends but
+**The first-3-run picture for A on task 2 was misleading.** Extending
+A2 to n=10 on each model surfaced:
+
+| A2 task | n | catch rate (amount field) | implied score distribution |
+|---|---|---|---|
+| Sonnet, first 3 | 3 | 0/3 (0%) | 3,3,3 |
+| Sonnet, n=10 | 10 | **3/10 (30%)** | seven 3s, three 5s |
+| Opus, n=10 | 10 | **10/10 (100%)** | all 5s |
+
+Lesson: **n=3 was enough to see "Sonnet has trouble here," not enough
+to distinguish "Sonnet always fails" from "Sonnet sometimes fails."**
+The original 3,3,3 was directionally right but quantitatively off.
+Every other A/B/C cell in the table above is n=3 only — apply the
+same caveat where the cells happen to land at the same score across
+runs.
+
+C has the lowest variance across the board, with **9 of 12 n=3 runs
+at exactly 5/5**. A is consistent on the easy and hard ends but
 catastrophically consistent at 3/5 on task 2 (missing-field failure
 mode is reproducible across runs).
 
@@ -279,7 +296,7 @@ data intact. Total Opus spend: $24.04 across 7 cells.
 
 | cell | Sonnet | Opus | what changed |
 |------|--------|------|--------------|
-| **A2** (Sonnet 3, Opus 10) | 3, 3, 3 — missed `amount_cents` | **10/10 — caught it** | **Pure model-capability gap.** Opus 10/10 (n=10 deliberately commissioned to firm up the headline; $18.94 for the extension), Sonnet 0/3. The headline Plan Mode failure was Sonnet-specific and the rate is now nearly unassailable. |
+| **A2** (Sonnet 10, Opus 10) | **3/10 caught (30%)** | **10/10 caught (100%)** | **Real model-capability gap, smaller than originally claimed.** Both samples extended to n=10. Sonnet's 30% catch rate breaks the original "0/3" framing — Sonnet does sometimes catch the field — but the 70-percentage-point Opus advantage is still meaningful and clean. Total rebuttal cost: $22.36 ($18.94 Opus + $3.42 Sonnet extension). |
 | **B2-r2 → r5** | 3 — missed amount | 3 — also missed | Spec Kit's specify-phase variance is workflow-shape, not model-capability. |
 | **B2-r3 → r6** | 3 — missed amount | 5 — caught it | Same Spec Kit cell, different outcome — variance persists on Opus (1/2 catch, vs Sonnet's 1/3). |
 | **B4-r1 → r4** | 3 — stored total wrong | 5 — used `(subtotal × pct + 50) // 100`, stored discounted value | Partly model-capability — Opus reasoned through the cents-rounding constraint properly. |
@@ -288,11 +305,14 @@ data intact. Total Opus spend: $24.04 across 7 cells.
 ### What this changes
 
 - **A2's "Plan Mode is structurally bad at well-specified medium tasks"
-  claim doesn't survive Opus.** On Opus, Plan Mode catches the
-  `amount_cents` field every time. The original article framing should
-  shift to "Sonnet+Plan Mode misses spec-detail audit fields that
-  Opus+Plan Mode catches" — still a real finding, but about the
-  Sonnet/Opus delta on this workflow, not about Plan Mode as a shape.
+  claim doesn't survive n=10 on either model.** At n=10: Opus catches
+  the amount field 10/10 (100%), Sonnet catches it 3/10 (30%). The
+  original article framing should shift to "Sonnet+Plan Mode is
+  unreliable on spec-detail audit fields (~30% catch rate);
+  Opus+Plan Mode catches them reliably (100% in our sample)" — still
+  a real finding with a 70-point gap, but about the Sonnet/Opus
+  delta on this workflow, not about Plan Mode as a shape, and not
+  about Sonnet always failing.
 - **Spec Kit's task-2 variance is real and model-independent.** B2 on
   Sonnet caught the amount field 1 of 3 times; on Opus 1 of 2. The
   specify phase is genuinely unreliable at interpreting "refund
@@ -327,7 +347,7 @@ After commissioning 9 additional A-Opus runs (A1, A3, A4 each ×3) and
 7 extra A2-Opus runs (bringing A2-Opus to n=10), we have **full n=3
 parity** between A-Sonnet and A-Opus across all 4 tasks, plus
 **n=10 on the headline A2 cell**. Grand total across Sonnet + Opus:
-**$130.08 for 59 cells**.
+**$134.63 for 66 cells**.
 
 Per-task A comparison (n=3 each, except A2 which is n=3 vs n=10):
 
@@ -390,20 +410,21 @@ The cheapest experiments that could break each headline finding,
 ordered by cost. Pre-registering these is the epistemic move I owe
 the reader before they decide whether to act on the report.
 
-### Finding 1 — "Opus catches A2 10/10, Sonnet misses 3/3"
+### Finding 1 — "Opus catches A2 10/10, Sonnet catches 3/10"
 
 - ~~Cheapest break: n=10 on A2-Opus~~ **DONE.** 10/10 Opus runs of A2
   caught the amount field (cost $1.89/cell, $18.94 total for the
-  rebuttal extension). The original 3/3 was not an artifact.
-- **Cheapest remaining break:** n=10 on A2-Sonnet. The current 0/3
-  might be coincidence even if rare; seven more Sonnet runs (~$5)
-  at a 0/10 rate would settle whether the failure is a true Sonnet
-  structural limit or just bad luck. The asymmetry of the current
-  n's (3 Sonnet vs 10 Opus) is the next-cheapest credibility win.
-- **What would refute it entirely:** any single A2-Sonnet run that
-  ships the `amount` field. Would re-open the "Plan Mode is
-  inconsistent on this task" interpretation instead of "Plan Mode
-  systematically misses on Sonnet."
+  rebuttal extension). The 100% Opus rate held up under n=10.
+- ~~Cheapest remaining break: n=10 on A2-Sonnet~~ **DONE — and the
+  result is a real shift.** 3/10 Sonnet runs caught the amount field
+  (~30%): r17, r19, r20. The original 0/3 was a small-sample
+  artifact. The 3/3 → 0/10 prediction this section anticipated did
+  NOT hold; 3/10 did. The article framing has been updated from
+  "Sonnet structurally misses" to "Sonnet catches ~30% of the time;
+  Opus catches reliably."
+- **What would still refute it entirely:** a single Opus run that
+  misses the field. We have 0/10 so far; one miss in n=20 would
+  reframe the Opus rate as "very reliable but not guaranteed."
 
 ### Finding 2 — "Spec Kit specify-phase variance is model-independent"
 
@@ -472,7 +493,7 @@ the reader before they decide whether to act on the report.
    then ~$5 in cell reruns on Plan-Mode-Sonnet).
 
 Total to get to a defensible n: roughly **$65 extra plus one second
-rater's afternoon**, on top of the $130.08 already spent. Each of the
+rater's afternoon**, on top of the $134.63 already spent. Each of the
 four would meaningfully change my confidence in the corresponding
 headline; none of them are strictly necessary to publish, but the
 first one is the cheapest credibility-per-dollar item in the whole
