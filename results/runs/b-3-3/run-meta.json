@@ -1,0 +1,24 @@
+{
+  "workflow": "b",
+  "task": 3,
+  "run": 3,
+  "label": "Scripted Spec Kit replication",
+  "branch": "workflow-b/task-3/run-3",
+  "base_branch": "spec-kit-base",
+  "prompt_hash": "sha256:2d999a45192ecac8159a6019fbdc8658cd3b4436d603a752414271532d6a7c02",
+  "session_id": "4269bb43-fb86-4520-898e-374e4c4d8551",
+  "model": "sonnet",
+  "hermetic_mode": true,
+  "context_source": "target_only",
+  "duration_seconds": 750,
+  "phase_costs_usd": {
+  "constitution": 0.24840549999999997,
+  "specify": 0.24815265,
+  "plan": 0.5759201999999999,
+  "tasks": 0.5084571,
+  "implement": 1.1148661500000003
+},
+  "total_cost_usd": 2.6958016000000002,
+  "total_tokens_input": 79,
+  "total_tokens_output": 46570
+}

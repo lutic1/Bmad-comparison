@@ -1,0 +1,767 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/_bmad-output/implementation-artifacts/1-1-rate-limiting.md b/target/_bmad-output/implementation-artifacts/1-1-rate-limiting.md
+new file mode 100644
+index 0000000..1c9d6b1
+--- /dev/null
++++ b/target/_bmad-output/implementation-artifacts/1-1-rate-limiting.md
+@@ -0,0 +1,108 @@
++# Story 1.1: Add Per-Client Rate Limiting
++
++Status: done
++
++## Story
++
++As an API operator,
++I want the FastAPI service to enforce a per-client request rate limit,
++so that no single caller can saturate the service through accidental hammering or deliberate abuse.
++
++## Acceptance Criteria
++
++1. A request that exceeds the configured limit within the time window receives HTTP 429 with body `{"detail": "rate limit exceeded"}`.
++2. Every HTTP 429 response includes a `Retry-After` header (integer ≥ 1) indicating seconds until the window resets.
++3. Requests up to and including the limit succeed with their normal status code.
++4. Two clients with different `X-User-Id` values have independent counters — one client exhausting its quota does not affect the other.
++5. When `X-User-Id` is absent, the client is keyed by source IP; rate limiting still applies.
++6. `GET /health` is never rate-limited, regardless of request volume.
++7. The limit and window are read from `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW_SECONDS` env vars at startup; removing the vars restores defaults (100 req / 60 s).
++8. All existing tests in `test_users.py` and `test_orders.py` continue to pass.
++
++## Tasks / Subtasks
++
++- [x] Create `src/api/rate_limit.py` (AC: 1, 2, 3, 4, 5, 7)
++  - [x] Module-level config: read `RATE_LIMIT_REQUESTS` (default 100) and `RATE_LIMIT_WINDOW_SECONDS` (default 60) from `os.environ`
++  - [x] Module-level store: `_store: dict[str, deque] = defaultdict(deque)` keyed by client string
++  - [x] `check_rate_limit(request: Request, x_user_id: int | None = Header(default=None)) -> None` dependency
++  - [x] Client key logic: `str(x_user_id)` if present, else `request.client.host` (fallback `"unknown"`)
++  - [x] Sliding-window prune: remove timestamps older than `now - _WINDOW` from front of deque
++  - [x] If `len(deque) >= _LIMIT`: compute `retry_after = ceil(deque[0] + _WINDOW - now)`, raise `HTTPException(429, detail="rate limit exceeded", headers={"Retry-After": str(max(1, retry_after))})`
++  - [x] Else: `deque.append(time.monotonic())`
++- [x] Modify `src/api/main.py` (AC: 6)
++  - [x] Import `check_rate_limit` from `api.rate_limit`
++  - [x] Import `Depends` from `fastapi`
++  - [x] Change `app.include_router(users.router)` → `app.include_router(users.router, dependencies=[Depends(check_rate_limit)])`
++  - [x] Change `app.include_router(orders.router)` → `app.include_router(orders.router, dependencies=[Depends(check_rate_limit)])`
++  - [x] Leave the `@app.get("/health")` route unchanged
++- [x] Create `tests/test_rate_limit.py` (AC: 1–8)
++  - [x] Import and monkeypatch `rate_limit._LIMIT` to 3 (keeps tests fast)
++  - [x] Also reset `rate_limit._store` between tests to prevent leakage
++  - [x] Test: requests 1–3 return non-429 (AC 3)
++  - [x] Test: 4th request returns 429 with `{"detail": "rate limit exceeded"}` (AC 1)
++  - [x] Test: 429 response has `Retry-After` header that is a positive integer string (AC 2)
++  - [x] Test: two different `X-User-Id` values have independent counters — exhausting one does not affect the other (AC 4)
++  - [x] Test: request without `X-User-Id` to `POST /users` is still rate-limited by IP (AC 5)
++  - [x] Test: `GET /health` returns 200 after limit+N calls (AC 6)
++
++### Review Findings
++
++- [x] [Review][Patch] `request.client.host` may be None in some proxy setups [`src/api/rate_limit.py:18`] — fixed: added `and request.client.host` guard
++- [x] [Review][Defer] Unbounded memory growth of `_store` — keys accumulate indefinitely [`src/api/rate_limit.py:11`] — deferred, pre-existing v1 design choice
++- [x] [Review][Defer] Invalid env var values (_LIMIT=0, _WINDOW=0, negatives) silently break logic [`src/api/rate_limit.py:8-9`] — deferred, pre-existing; operator documentation concern
++
++## Dev Notes
++
++**Stack context:** Python 3.11+, FastAPI 0.115.0, Uvicorn single-process, SQLite. No new dependencies — use `collections.defaultdict`, `collections.deque`, `time.monotonic`, `math.ceil`, `os.environ`.
++
++**Pattern to follow:** `src/api/deps.py` is the canonical example of a FastAPI dependency (`get_db`, `get_current_user`). `check_rate_limit` follows the same shape: a function with typed parameters that FastAPI resolves via DI. `HTTPException` is already imported everywhere — use the same import.
++
++**Why `app.include_router(..., dependencies=[...])` not app-level `dependencies=`:** The `/health` endpoint is registered directly on `app` and must remain exempt for load-balancer probes. Per-router injection is the surgical option.
++
++**Why sliding window:** A fixed window allows a 2× burst at boundary edges. Sliding window (deque of `time.monotonic()` floats) eliminates that. GIL serialises dict/deque ops in a single-process Uvicorn deployment — no explicit lock needed.
++
++**Test isolation:** `_store` is module-level and persists across requests in the same process. Tests must clear it between runs. Monkeypatch `rate_limit._LIMIT = 3` (not the env var) to keep tests fast and deterministic. Use a `@pytest.fixture(autouse=True)` or explicit `rate_limit._store.clear()` in a fixture.
++
++**Do not touch:** `deps.py`, `models.py`, `routes/users.py`, `routes/orders.py`, `conftest.py`, `pyproject.toml`. Do not add logging, metrics, or middleware.
++
++### Project Structure Notes
++
++```
++src/api/
++  rate_limit.py        ← NEW (alongside deps.py, main.py, models.py)
++  main.py              ← MODIFIED (2 include_router calls + 2 imports)
++
++tests/
++  test_rate_limit.py   ← NEW (alongside test_users.py, test_orders.py)
++```
++
++### References
++
++- PRD: `_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md` — FR-1 through FR-5, §5 Non-Goals
++- Architecture: `_bmad-output/planning-artifacts/architecture/rate-limiting-design.md` — D1 (dependency not middleware), D2 (sliding window), D3 (client key), D4 (env vars)
++- Existing dependency pattern: `src/api/deps.py`
++- Router registration: `src/api/main.py`
++- Test fixture: `tests/conftest.py` — use `client` fixture as-is
++
++## Dev Agent Record
++
++### Agent Model Used
++
++claude-sonnet-4-6
++
++### Debug Log References
++
++None — implementation matched spec exactly on first pass.
++
++### Completion Notes List
++
++- Created `src/api/rate_limit.py`: sliding-window dependency, env-var config, module-level deque store.
++- Modified `src/api/main.py`: wired `check_rate_limit` into both routers via `dependencies=[Depends(...)]`; `/health` remains exempt.
++- Created `tests/test_rate_limit.py`: 6 tests, `autouse` fixture patches `_LIMIT=3` and clears `_store` per test.
++- 17/17 tests pass (6 new + 11 existing). No regressions.
++
++### File List
++
++- src/api/rate_limit.py (new)
++- src/api/main.py (modified)
++- tests/test_rate_limit.py (new)
+diff --git a/target/_bmad-output/implementation-artifacts/deferred-work.md b/target/_bmad-output/implementation-artifacts/deferred-work.md
+new file mode 100644
+index 0000000..24c41c8
+--- /dev/null
++++ b/target/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -0,0 +1,6 @@
++# Deferred Work
++
++## Deferred from: code review of 1-1-rate-limiting (2026-05-19)
++
++- **Unbounded memory growth of `_store`** [`src/api/rate_limit.py:11`]: keys accumulate indefinitely; no eviction of stale client entries. Acceptable for v1 single-process deployment; revisit if service is long-lived with high client churn.
++- **Invalid env var values (_LIMIT=0, _WINDOW=0, negatives) silently break rate limit logic** [`src/api/rate_limit.py:8-9`]: no bounds validation on `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`. Operator documentation should warn against zero/negative values; guard with `max(1, int(...))` if stricter safety is needed.
+diff --git a/target/_bmad-output/planning-artifacts/architecture/rate-limiting-design.md b/target/_bmad-output/planning-artifacts/architecture/rate-limiting-design.md
+new file mode 100644
+index 0000000..54db147
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/architecture/rate-limiting-design.md
+@@ -0,0 +1,185 @@
++# Architecture Design: API Rate Limiting
++
++**Date:** 2026-05-19
++**PRD:** `_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md`
++**Status:** Final
++
++---
++
++## 1. Codebase Snapshot
++
++| Layer | Files |
++|---|---|
++| App entry | `src/api/main.py` |
++| Dependencies | `src/api/deps.py` — `get_db`, `get_current_user` |
++| Models | `src/api/models.py` — User, Order, OrderItem |
++| Routes | `src/api/routes/users.py`, `src/api/routes/orders.py` |
++| Tests | `tests/conftest.py` (client + db_engine fixtures), `tests/test_users.py`, `tests/test_orders.py` |
++| Runtime | Single-process FastAPI/Uvicorn, SQLite, no external cache |
++| Dependencies | No Redis, no external rate-limit library. Stdlib only. |
++
++---
++
++## 2. Key Decisions
++
++### D1: FastAPI dependency, not Starlette middleware
++
++**Chosen:** A `Depends(check_rate_limit)` added to the two routers.
++
++**Why not middleware:**
++- Middleware runs before routing; it has no access to parsed path params or the
++  dependency injection graph. Raising `HTTPException` from middleware requires
++  manual JSON serialisation.
++- The existing pattern is `Depends(get_db)` / `Depends(get_current_user)`. A
++  dependency matches that pattern exactly.
++
++**Why not app-level `dependencies=[...]`:**
++- `app = FastAPI(dependencies=[Depends(check_rate_limit)])` would also rate-limit
++  `/health`, which should be exempt so load-balancer health probes don't consume quota.
++- Per-router injection (`app.include_router(..., dependencies=[...])`) is the
++  surgical option.
++
++### D2: Sliding-window counter (deque of timestamps)
++
++**Chosen:** `collections.defaultdict(collections.deque)` — maps `client_key → deque[float]` of accepted request timestamps.
++
++On each request:
++1. Prune timestamps older than `now - window_seconds`.
++2. If `len(deque) >= limit` → raise 429, `Retry-After = ceil(oldest + window - now)`.
++3. Else append `now`, let request through.
++
++**Why sliding over fixed window:**
++- Fixed window allows a 2× burst at the window boundary (last request in window N,
++  first request in window N+1). Sliding window eliminates that attack surface.
++- Complexity cost is identical; stdlib `deque` is O(1) append/popleft.
++
++**Thread safety:** CPython's GIL serialises dict lookups and deque popleft/append
++in a single-process Uvicorn deployment. No explicit lock needed for the v1
++single-worker assumption. If multi-worker is adopted, replace the in-process store
++with a Redis sorted-set counter.
++
++### D3: Client key = X-User-Id header, fallback to request.client.host
++
++`POST /users` does not require auth, so `X-User-Id` may be absent. Fallback to
++source IP covers that case without breaking the unauthenticated endpoint.
++
++### D4: Configuration via environment variables
++
++| Variable | Default | Meaning |
++|---|---|---|
++| `RATE_LIMIT_REQUESTS` | `100` | Max requests per window per client |
++| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Window duration in seconds |
++
++Read at module import. Restart required to apply changes — acceptable per PRD §6.2.
++
++---
++
++## 3. Files That Change
++
++### New: `src/api/rate_limit.py`
++
++```python
++import os
++import time
++from collections import defaultdict, deque
++from math import ceil
++
++from fastapi import Depends, Header, HTTPException, Request
++
++_LIMIT = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
++_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
++
++_store: dict[str, deque] = defaultdict(deque)
++
++
++def check_rate_limit(
++    request: Request,
++    x_user_id: int | None = Header(default=None),
++) -> None:
++    key = str(x_user_id) if x_user_id is not None else (request.client.host if request.client else "unknown")
++    now = time.monotonic()
++    window = _store[key]
++
++    # prune expired
++    while window and window[0] <= now - _WINDOW:
++        window.popleft()
++
++    if len(window) >= _LIMIT:
++        retry_after = ceil(window[0] + _WINDOW - now)
++        raise HTTPException(
++            status_code=429,
++            detail="rate limit exceeded",
++            headers={"Retry-After": str(max(1, retry_after))},
++        )
++
++    window.append(now)
++```
++
++> **Note:** `_store` is module-level — it persists across requests in the same
++> process. Each test run gets an isolated process via `TestClient`, so no
++> cross-test leakage in the existing fixture design. If needed, tests can
++> clear `_store` directly or monkeypatch the limit to a low value.
++
++### Modified: `src/api/main.py`
++
++Add `Depends(check_rate_limit)` to both router registrations. `/health` is
++registered directly on `app` and is unaffected.
++
++```python
++from api.rate_limit import check_rate_limit
++
++app.include_router(users.router, dependencies=[Depends(check_rate_limit)])
++app.include_router(orders.router, dependencies=[Depends(check_rate_limit)])
++```
++
++### New: `tests/test_rate_limit.py`
++
++Tests use the existing `client` fixture. They monkeypatch `rate_limit._LIMIT` to
++a small value (e.g. 3) to avoid making 100 requests per assertion.
++
++Key scenarios:
++1. Requests up to limit succeed (200/201).
++2. Request at limit+1 → 429 with `detail: "rate limit exceeded"`.
++3. 429 response includes `Retry-After` header (integer ≥ 1).
++4. Different `X-User-Id` values have independent counters.
++5. No `X-User-Id` (unauthenticated to `/users`) — IP-keyed counter enforced.
++6. `/health` is not rate-limited (survives limit+N requests).
++
++---
++
++## 4. Files That Do NOT Change
++
++| File | Reason |
++|---|---|
++| `src/api/deps.py` | Rate limiting is independent of DB/auth deps |
++| `src/api/models.py` | No schema changes; counters are in-memory |
++| `src/api/routes/users.py` | No route-level changes needed |
++| `src/api/routes/orders.py` | No route-level changes needed |
++| `pyproject.toml` | No new dependencies; stdlib only |
++| `tests/conftest.py` | Existing fixtures are sufficient |
++
++---
++
++## 5. Open Questions Resolved for Architecture
++
++| OQ | Resolution |
++|---|---|
++| OQ-2: Which endpoints? | All `/users` and `/orders` routes; `/health` exempt |
++| OQ-3: Client key | `X-User-Id` if present, else source IP |
++| OQ-5: Multi-worker? | Assumed single-process for v1; in-memory is sufficient |
++| OQ-6: Config mechanism | Environment variables |
++| OQ-7: Latency budget | Sliding window over a deque is O(n) prune + O(1) append; negligible overhead at 100 req/window |
++
++**Still open (PM to resolve before ship):**
++- OQ-1: Why now / urgency (does not block implementation)
++- OQ-4: Agreed default limits — current default (100/60s) is an assumption; confirm with PM
++
++---
++
++## 6. Risk Register
++
++| Risk | Likelihood | Mitigation |
++|---|---|---|
++| Multi-worker deployment invalidates in-memory counters | Low (single-process assumed) | Document; v2 path is Redis sorted-set |
++| `request.client` is None behind some proxies | Low | Fallback to `"unknown"` key (all proxy-hidden clients share one bucket) — acceptable for v1 |
++| Tests leak state between runs via module-level `_store` | Low | `TestClient` uses a fresh event loop per test; monkeypatching `_LIMIT` to a small value keeps tests fast and independent |
+diff --git a/target/_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-19.md b/target/_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-19.md
+new file mode 100644
+index 0000000..e35a6bb
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-19.md
+@@ -0,0 +1,13 @@
++---
++stepsCompleted: []
++filesIncluded:
++  prd: planning-artifacts/prds/prd-target-2026-05-19/prd.md
++  architecture: planning-artifacts/architecture/rate-limiting-design.md
++  epics: none
++  ux: none
++---
++
++# Implementation Readiness Assessment Report
++
++**Date:** 2026-05-19
++**Project:** target
+diff --git a/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/.decision-log.md b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/.decision-log.md
+new file mode 100644
+index 0000000..6e3bfc0
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/.decision-log.md
+@@ -0,0 +1,22 @@
++# Decision Log — API Rate Limiting PRD
++
++## 2026-05-19 — PRD Created (headless, fast-path from analyst elicitation)
++
++**Input:** Raw request "Add rate limiting to the API" + analyst elicitation questions (unanswered).
++**Decision:** Proceeded with fast-path draft. All unanswered elicitation questions captured as Open Questions (OQ-1 through OQ-7). All inferred values tagged `[ASSUMPTION]` and indexed in §9.
++**Rationale:** No user answers were available; blocking on them would delay downstream work. Assumptions are conservative and safe defaults for an internal SQLite/FastAPI service.
++
++## Assumptions logged as risks
++
++| Assumption | Risk if wrong |
++|---|---|
++| Client key = X-User-Id | Unauthenticated endpoints not protected |
++| In-memory counters | Multi-worker deployments will have divergent counts |
++| All routes in scope | May be too broad; per-endpoint ask may be wanted |
++| 100 req/60s default | May be too tight or too loose for actual traffic |
++| Env-var config | May not fit ops secrets management process |
++| ≤5ms latency budget | May not match service SLA |
++
++## Status
++
++`draft` — pending owner review of OQ-1 through OQ-7 before architect handoff.
+diff --git a/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md
+new file mode 100644
+index 0000000..82e4177
+--- /dev/null
++++ b/target/_bmad-output/planning-artifacts/prds/prd-target-2026-05-19/prd.md
+@@ -0,0 +1,193 @@
++---
++title: API Rate Limiting
++status: draft
++created: 2026-05-19
++updated: 2026-05-19
++---
++
++# PRD: API Rate Limiting
++
++## 0. Document Purpose
++
++This PRD is for the PM, engineers, and architect responsible for the `target` FastAPI service (users + orders, SQLAlchemy + SQLite). It defines the requirements for adding rate limiting to protect the API from abuse and unintended load. Downstream: architecture design, epics and stories.
++
++---
++
++## 1. Vision
++
++The `target` service currently imposes no upper bound on how frequently any caller may hit its endpoints. Any client — legitimate or malicious — can send requests at arbitrary rates, risking service degradation, data integrity issues, and unexpected infrastructure cost.
++
++Rate limiting adds a policy layer that caps request frequency per identified client. When a client exceeds the cap the service rejects excess requests with a standard HTTP 429 response, signalling the client to back off. This makes the service predictable under load, deters casual abuse, and establishes the foundation for tiered access policies in the future.
++
++The initial implementation targets the existing user and order routes. It must integrate cleanly with the current auth convention (`X-User-Id` header) and must not require new runtime infrastructure beyond what the service already runs.
++
++---
++
++## 2. Target User
++
++### 2.1 Primary Persona
++
++**API operator / platform maintainer.** Responsible for the health and reliability of the `target` service. Wants confidence that no single caller can saturate the service, and wants clear signals (logs, headers) when limits fire.
++
++### 2.2 Jobs To Be Done
++
++- Protect the service from accidental hammering by misconfigured clients.
++- Deter intentional abuse or scraping.
++- Give legitimate clients a clear, standard signal when they need to slow down.
++- Configure limits without redeploying (stretch goal — see Open Questions).
++
++### 2.3 Non-Users (v1)
++
++External end-users do not interact with rate limiting directly; they receive a 429 and a `Retry-After` header. Rate limit configuration UIs or dashboards are not in scope.
++
++### 2.4 Key User Journeys
++
++**UJ-1. A misconfigured client is self-corrected.**
++A service consumer's retry loop fires too aggressively. The rate limiter detects the burst, returns HTTP 429 with `Retry-After`, and the client backs off. The operator sees no service degradation; the misconfigured client eventually self-corrects.
++
++**UJ-2. An operator tunes the limit.**
++The operator sets the rate limit via an environment variable (or config file — see OQ-6), restarts the service, and the new limit takes effect immediately. No code change required.
++
++---
++
++## 3. Glossary
++
++- **Client** — the entity whose request rate is being measured. May be identified by `X-User-Id` header value, source IP, or both. [ASSUMPTION: primary key is `X-User-Id`; IP is fallback for unauthenticated requests — see OQ-3.]
++- **Rate limit** — the maximum number of requests a Client may make in a defined time window.
++- **Window** — the rolling or fixed time interval over which requests are counted (e.g. 60 seconds).
++- **Counter** — the per-client request count within the current window.
++- **429 response** — HTTP 429 Too Many Requests; the response returned when a client exceeds its rate limit.
++- **`Retry-After`** — HTTP response header indicating how many seconds the client must wait before retrying.
++
++---
++
++## 4. Features
++
++### 4.1 Request Rate Enforcement
++
++**Description:** Every inbound request is evaluated against the client's counter for the current window. If the counter is below the limit, the request proceeds and the counter is incremented. If the counter is at or above the limit, the service immediately returns HTTP 429 with a `Retry-After` header and does not execute the route handler. The feature applies to [ASSUMPTION: all authenticated routes — see OQ-2].
++
++**Functional Requirements:**
++
++#### FR-1: Per-client counter increment
++
++The system increments a per-client request counter on each accepted request within the active window.
++
++**Consequences (testable):**
++- After N accepted requests in a window, the counter equals N.
++- Counter resets at the start of a new window.
++
++#### FR-2: Limit enforcement and 429 response
++
++When a client's counter reaches or exceeds the configured limit, the system returns HTTP 429 Too Many Requests for all subsequent requests in that window.
++
++**Consequences (testable):**
++- The (limit + 1)th request in a window receives HTTP 429.
++- The response body contains a machine-readable error field (e.g. `{"detail": "rate limit exceeded"}`).
++- Requests below the limit receive their normal response code.
++
++#### FR-3: `Retry-After` header
++
++Every HTTP 429 response includes a `Retry-After` header indicating the number of seconds until the client's window resets.
++
++**Consequences (testable):**
++- HTTP 429 responses have `Retry-After: N` where N ≥ 1.
++- Clients that wait `Retry-After` seconds and retry receive a non-429 response (assuming no new burst).
++
++#### FR-4: Client identification
++
++The system identifies the client by the `X-User-Id` request header when present. [ASSUMPTION: unauthenticated requests are identified by source IP — see OQ-3.]
++
++**Consequences (testable):**
++- Two requests with different `X-User-Id` values do not share a counter.
++- Two requests with the same `X-User-Id` share a counter within the same window.
++
++**Feature-specific NFRs:**
++- Rate limit enforcement must add ≤ 5 ms median latency to any request that is not rejected. [ASSUMPTION — see OQ-7.]
++- Counter storage must not require an external process (Redis, Memcached) in the initial implementation. [ASSUMPTION: in-memory per-process — see OQ-5.]
++
++**Notes:** [NOTE FOR PM] If multi-worker deployment is required, in-memory counters will diverge across workers. OQ-5 must be resolved before architecture begins.
++
++### 4.2 Rate Limit Configuration
++
++**Description:** The rate limit (requests per window and window duration) is configurable without a code change. [ASSUMPTION: configuration is via environment variables — see OQ-6.]
++
++**Functional Requirements:**
++
++#### FR-5: Configurable limit and window
++
++The system reads rate limit parameters (max requests, window seconds) from configuration at startup. Default values are applied when configuration is absent.
++
++**Consequences (testable):**
++- Changing the env var and restarting the service changes the enforced limit.
++- With no configuration set, the service starts with a documented default (e.g. 100 req / 60 s). [ASSUMPTION on default values — see OQ-4.]
++
++---
++
++## 5. Non-Goals (Explicit)
++
++- **No per-endpoint limits in v1.** A single global limit applies to all in-scope routes. Per-route or per-method tuning is deferred.
++- **No per-user tiers.** All clients share the same limit. Paid/free tiering is out of scope.
++- **No distributed counter store.** Redis or equivalent shared cache is not introduced in v1. In-memory only.
++- **No rate limit admin UI or API.** Operators configure via env vars / config; there is no management endpoint.
++- **No IP allowlist / denylist.** Bypassing rate limiting for trusted IPs is out of scope.
++- **No request body inspection.** Limits apply to request count, not payload size or content.
++- **No alerting or metrics pipeline.** Logging a 429 event is acceptable; wiring to Prometheus, Datadog, or similar is out of scope.
++
++---
++
++## 6. MVP Scope
++
++### 6.1 In Scope
++
++- In-process rate limit middleware/dependency integrated into the FastAPI service.
++- Per-client counters keyed on `X-User-Id` (fallback: source IP). [ASSUMPTION — OQ-3]
++- Configurable limit and window via environment variable.
++- HTTP 429 response with `Retry-After` header.
++- Unit and integration tests using the existing `client` fixture in `tests/conftest.py`.
++
++### 6.2 Out of Scope for MVP
++
++- Distributed counter storage (Redis) — deferred to v2 if multi-worker deployment is required.
++- Per-endpoint or per-user-tier limits — deferred to v2.
++- Runtime reconfiguration without restart — deferred; env-var config requires restart.
++- Metrics/alerting integration — deferred.
++- Admin API — deferred.
++
++---
++
++## 7. Success Metrics
++
++**Primary**
++- **SM-1:** 100% of requests exceeding the configured limit receive HTTP 429. Validates FR-2.
++- **SM-2:** All HTTP 429 responses include a valid `Retry-After` header. Validates FR-3.
++
++**Secondary**
++- **SM-3:** Median added latency for non-rejected requests ≤ 5 ms under load. Validates FR-1 NFR.
++- **SM-4:** Rate limit parameters change takes effect within one service restart, with no code change. Validates FR-5.
++
++**Counter-metrics (do not optimize)**
++- **SM-C1:** False-positive rate (legitimate requests rejected). Should remain 0% under normal traffic patterns. Counterbalances SM-1 — do not tighten limits to the point of rejecting valid clients.
++
++---
++
++## 8. Open Questions
++
++1. **OQ-1: Why now?** Is this driven by a specific incident, security audit, compliance requirement, or proactive hardening? Answer affects urgency and scope.
++2. **OQ-2: Which endpoints?** Should rate limiting apply to all routes, or only specific ones (e.g. order creation, user registration)? Determines implementation scope.
++3. **OQ-3: Client identification key.** Primary key: `X-User-Id`? Fallback for unauthenticated requests: source IP? Both? Neither (global per-service limit only)?
++4. **OQ-4: Default limit values.** What is the target limit? (e.g. 100 req / 60 s per client.) Who owns this number?
++5. **OQ-5: Counter storage for multi-worker.** Is the service currently run as a single process? If multiple workers are expected, in-memory counters are insufficient and a shared store (Redis) or sticky routing is required.
++6. **OQ-6: Configuration mechanism.** Environment variables acceptable? Or is a config file / secrets manager preferred?
++7. **OQ-7: Latency budget.** Is ≤ 5 ms added overhead an acceptable constraint, or does the service have a tighter SLA?
++
++---
++
++## 9. Assumptions Index
++
++- **§3 / FR-4:** Primary client key is `X-User-Id`; unauthenticated requests fall back to source IP.
++- **§4.1:** Rate limiting applies to all authenticated routes (not a subset).
++- **§4.1 NFR:** ≤ 5 ms median overhead is the acceptable latency budget.
++- **§4.1 NFR:** In-memory counter storage only; no external process required.
++- **§4.2 / FR-5:** Configuration via environment variables.
++- **§4.2 / FR-5:** Default limit is 100 requests per 60-second window.
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..813be3b 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -1,9 +1,10 @@
+ from contextlib import asynccontextmanager
+ 
+-from fastapi import FastAPI
++from fastapi import Depends, FastAPI
+ 
+ from api.deps import engine
+ from api.models import Base
++from api.rate_limit import check_rate_limit
+ from api.routes import orders, users
+ 
+ 
+@@ -15,8 +16,8 @@ async def lifespan(_: FastAPI):
+ 
+ app = FastAPI(title="benchmark-target", lifespan=lifespan)
+ 
+-app.include_router(users.router)
+-app.include_router(orders.router)
++app.include_router(users.router, dependencies=[Depends(check_rate_limit)])
++app.include_router(orders.router, dependencies=[Depends(check_rate_limit)])
+ 
+ 
+ @app.get("/health")
+diff --git a/target/src/api/rate_limit.py b/target/src/api/rate_limit.py
+new file mode 100644
+index 0000000..e104242
+--- /dev/null
++++ b/target/src/api/rate_limit.py
+@@ -0,0 +1,35 @@
++import os
++import time
++from collections import defaultdict, deque
++from math import ceil
++
++from fastapi import Header, HTTPException, Request
++
++_LIMIT = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
++_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
++
++_store: dict[str, deque] = defaultdict(deque)
++
++
++def check_rate_limit(
++    request: Request,
++    x_user_id: int | None = Header(default=None),
++) -> None:
++    key = str(x_user_id) if x_user_id is not None else (
++        request.client.host if request.client and request.client.host else "unknown"
++    )
++    now = time.monotonic()
++    window = _store[key]
++
++    while window and window[0] <= now - _WINDOW:
++        window.popleft()
++
++    if len(window) >= _LIMIT:
++        retry_after = ceil(window[0] + _WINDOW - now)
++        raise HTTPException(
++            status_code=429,
++            detail="rate limit exceeded",
++            headers={"Retry-After": str(max(1, retry_after))},
++        )
++
++    window.append(now)
+diff --git a/target/tests/test_rate_limit.py b/target/tests/test_rate_limit.py
+new file mode 100644
+index 0000000..9f50b54
+--- /dev/null
++++ b/target/tests/test_rate_limit.py
+@@ -0,0 +1,75 @@
++import pytest
++
++from api import rate_limit
++
++
++@pytest.fixture(autouse=True)
++def reset_rate_limiter(monkeypatch):
++    monkeypatch.setattr(rate_limit, "_LIMIT", 3)
++    rate_limit._store.clear()
++    yield
++    rate_limit._store.clear()
++
++
++def _make_user(client, email="rl@example.com", name="RL"):
++    resp = client.post("/users", json={"email": email, "name": name})
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def test_requests_within_limit_succeed(client):
++    for _ in range(3):
++        resp = client.get("/health")
++        # health is exempt; use users endpoint instead
++    user = _make_user(client, email="a1@example.com")
++    rate_limit._store.clear()
++    for i in range(3):
++        resp = client.get(f"/users/{user['id']}", headers={"X-User-Id": str(user["id"])})
++        assert resp.status_code == 200
++
++
++def test_request_over_limit_returns_429(client):
++    user = _make_user(client, email="a2@example.com")
++    rate_limit._store.clear()
++    uid = str(user["id"])
++    for _ in range(3):
++        client.get(f"/users/{user['id']}", headers={"X-User-Id": uid})
++    resp = client.get(f"/users/{user['id']}", headers={"X-User-Id": uid})
++    assert resp.status_code == 429
++    assert resp.json()["detail"] == "rate limit exceeded"
++
++
++def test_429_includes_retry_after_header(client):
++    user = _make_user(client, email="a3@example.com")
++    rate_limit._store.clear()
++    uid = str(user["id"])
++    for _ in range(3):
++        client.get(f"/users/{user['id']}", headers={"X-User-Id": uid})
++    resp = client.get(f"/users/{user['id']}", headers={"X-User-Id": uid})
++    assert resp.status_code == 429
++    assert "retry-after" in resp.headers
++    assert int(resp.headers["retry-after"]) >= 1
++
++
++def test_different_users_have_independent_counters(client):
++    u1 = _make_user(client, email="b1@example.com")
++    u2 = _make_user(client, email="b2@example.com")
++    rate_limit._store.clear()
++    for _ in range(3):
++        client.get(f"/users/{u1['id']}", headers={"X-User-Id": str(u1["id"])})
++    # u1 is now at limit; u2 should still be fine
++    resp = client.get(f"/users/{u2['id']}", headers={"X-User-Id": str(u2["id"])})
++    assert resp.status_code == 200
++
++
++def test_unauthenticated_request_is_rate_limited_by_ip(client):
++    for i in range(3):
++        client.post("/users", json={"email": f"ip{i}@example.com", "name": f"IP{i}"})
++    resp = client.post("/users", json={"email": "ip_over@example.com", "name": "Over"})
++    assert resp.status_code == 429
++
++
++def test_health_endpoint_is_never_rate_limited(client):
++    for _ in range(10):
++        resp = client.get("/health")
++        assert resp.status_code == 200

@@ -1,0 +1,201 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..8705d17 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -4,6 +4,7 @@ from fastapi import FastAPI
+ 
+ from api.deps import engine
+ from api.models import Base
++from api.middleware.rate_limit import RateLimitMiddleware
+ from api.routes import orders, users
+ 
+ 
+@@ -17,6 +18,7 @@ app = FastAPI(title="benchmark-target", lifespan=lifespan)
+ 
+ app.include_router(users.router)
+ app.include_router(orders.router)
++app.add_middleware(RateLimitMiddleware)
+ 
+ 
+ @app.get("/health")
+diff --git a/target/src/api/middleware/__init__.py b/target/src/api/middleware/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/target/src/api/middleware/rate_limit.py b/target/src/api/middleware/rate_limit.py
+new file mode 100644
+index 0000000..e272b05
+--- /dev/null
++++ b/target/src/api/middleware/rate_limit.py
+@@ -0,0 +1,37 @@
++from time import time
++
++from starlette.middleware.base import BaseHTTPMiddleware
++from starlette.requests import Request
++from starlette.responses import JSONResponse, Response
++
++RATE_LIMIT = 100
++WINDOW_SECONDS = 60.0
++
++
++class RateLimitMiddleware(BaseHTTPMiddleware):
++    def __init__(self, app, *, limit: int = RATE_LIMIT,
++                 window: float = WINDOW_SECONDS,
++                 store: dict | None = None) -> None:
++        super().__init__(app)
++        self._limit = limit
++        self._window = window
++        self._store: dict[str, tuple[int, float]] = {} if store is None else store
++
++    async def dispatch(self, request: Request, call_next) -> Response:
++        if request.url.path == "/health":
++            return await call_next(request)
++
++        ip: str = request.client.host if request.client else "unknown"
++        now: float = time()
++        count, window_start = self._store.get(ip, (0, now))
++
++        if now - window_start >= self._window:
++            count, window_start = 0, now
++
++        count += 1
++        self._store[ip] = (count, window_start)
++
++        if count > self._limit:
++            return JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
++
++        return await call_next(request)
+diff --git a/target/tests/test_rate_limit.py b/target/tests/test_rate_limit.py
+new file mode 100644
+index 0000000..9d20282
+--- /dev/null
++++ b/target/tests/test_rate_limit.py
+@@ -0,0 +1,74 @@
++import pytest
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++
++from api.middleware.rate_limit import RateLimitMiddleware
++
++
++def _make_app(limit: int, store: dict) -> FastAPI:
++    test_app = FastAPI()
++
++    @test_app.get("/ping")
++    def ping():
++        return {"ok": True}
++
++    @test_app.get("/health")
++    def health():
++        return {"status": "ok"}
++
++    test_app.add_middleware(RateLimitMiddleware, limit=limit, store=store)
++    return test_app
++
++
++@pytest.fixture
++def rate_limit_client():
++    store: dict = {}
++    app = _make_app(limit=3, store=store)
++    with TestClient(app) as c:
++        yield c, store
++
++
++def test_requests_under_limit_succeed(rate_limit_client):
++    client, _ = rate_limit_client
++    for _ in range(3):
++        assert client.get("/ping").status_code == 200
++
++
++def test_request_exceeding_limit_returns_429(rate_limit_client):
++    client, _ = rate_limit_client
++    for _ in range(3):
++        client.get("/ping")
++    resp = client.get("/ping")
++    assert resp.status_code == 429
++    assert resp.json() == {"detail": "Rate limit exceeded"}
++
++
++def test_429_body_is_json(rate_limit_client):
++    client, _ = rate_limit_client
++    for _ in range(4):
++        client.get("/ping")
++    resp = client.get("/ping")
++    assert resp.headers["content-type"].startswith("application/json")
++    assert resp.json()["detail"] == "Rate limit exceeded"
++
++
++def test_health_endpoint_skipped(rate_limit_client):
++    client, _ = rate_limit_client
++    for _ in range(4):
++        client.get("/ping")
++    assert client.get("/health").status_code == 200
++
++
++def test_window_reset_allows_requests_again():
++    store: dict = {}
++    app = _make_app(limit=2, store=store)
++    with TestClient(app) as client:
++        client.get("/ping")
++        client.get("/ping")
++        assert client.get("/ping").status_code == 429
++
++        ip = list(store.keys())[0]
++        count, window_start = store[ip]
++        store[ip] = (count, window_start - 61.0)
++
++        assert client.get("/ping").status_code == 200
