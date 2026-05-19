@@ -1,13 +1,24 @@
 """Benchmark run harness.
 
-Wraps one benchmark run: checks out a fresh branch, pauses while the
-operator runs the workflow manually, then captures git diff stats,
-pytest results, wall-clock duration, token / cost numbers (entered by
-the operator), and a 1-5 subjective score. Appends one row to
+Wraps one benchmark run: checks out a fresh branch off the workflow's
+base, optionally pauses for an interactive operator session (default
+mode) or accepts every captured value as a flag (--non-interactive),
+captures git diff stats, pytest results, wall-clock duration, token /
+cost numbers, and a 1-5 subjective score. Appends one row to
 results/results.csv and saves artifacts to results/runs/.
 
 Usage:
+    # interactive (original behaviour)
     python harness/run.py --workflow {a,b,c} --task {1,2,3,4} --run {1,2,3}
+
+    # non-interactive (driven by harness/run_a_scripted.sh et al.)
+    python harness/run.py --workflow a --task 1 --run 1 --non-interactive \\
+        --duration-seconds 134 \\
+        --plan-cost-usd 0.41 --plan-tokens-input 12345 --plan-tokens-output 678 \\
+        --execute-cost-usd 0.22 --execute-tokens-input 5678 --execute-tokens-output 234 \\
+        --prompt-hash sha256:abcd... \\
+        --model sonnet --hermetic-mode true --context-source target_only \\
+        --score 4 --notes "happy-path, no scope creep"
 """
 
 from __future__ import annotations
@@ -16,7 +27,6 @@ import argparse
 import csv
 import datetime as dt
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -33,15 +43,27 @@ CSV_COLUMNS = [
     "workflow",
     "task",
     "run",
+    "base_branch",
+    "branch_name",
+    "prompt_hash",
     "duration_seconds",
     "files_changed",
     "lines_added",
     "lines_removed",
     "tests_total",
     "tests_passed",
+    "plan_call_cost_usd",
+    "plan_call_tokens_input",
+    "plan_call_tokens_output",
+    "execute_call_cost_usd",
+    "execute_call_tokens_input",
+    "execute_call_tokens_output",
     "tokens_input",
     "tokens_output",
     "cost_usd",
+    "model",
+    "hermetic_mode",
+    "context_source",
     "subjective_score",
     "notes",
 ]
@@ -77,7 +99,22 @@ def run_git(*args: str, cwd: Path = REPO_ROOT, check: bool = True) -> str:
 
 def ensure_csv_header() -> None:
     RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
-    if not RESULTS_CSV.exists() or RESULTS_CSV.stat().st_size == 0:
+    needs_header = (
+        not RESULTS_CSV.exists() or RESULTS_CSV.stat().st_size == 0
+    )
+    if not needs_header:
+        # Detect old single-totals schema and migrate by rewriting header.
+        with RESULTS_CSV.open() as f:
+            first = f.readline().strip().split(",")
+        if first != CSV_COLUMNS:
+            backup = RESULTS_CSV.with_suffix(".csv.bak")
+            RESULTS_CSV.rename(backup)
+            sys.stderr.write(
+                f"results.csv schema changed; old file moved to "
+                f"{backup.name}.\n"
+            )
+            needs_header = True
+    if needs_header:
         with RESULTS_CSV.open("w", newline="") as f:
             csv.writer(f).writerow(CSV_COLUMNS)
 
@@ -134,9 +171,22 @@ def print_workflow_prompt(workflow: str, task: int) -> None:
     print()
 
 
+def _is_workflow_path(path: str) -> bool:
+    """A diff entry counts as workflow output only if the workflow
+    actually produced it. Excludes:
+      - the guardrails CLAUDE.md the runbook copies into target/
+      - any harness artifact under results/
+      - anything outside target/ (e.g. the operator editing a runbook
+        mid-run)
+    """
+    if not path.startswith("target/"):
+        return False
+    if path == "target/CLAUDE.md":
+        return False
+    return True
+
+
 def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
-    # Use a staged-ish view: include both committed (if any) and working
-    # tree changes relative to the workflow's base branch.
     output = subprocess.run(
         ["git", "diff", f"{base}...HEAD", "--numstat"],
         cwd=REPO_ROOT,
@@ -166,6 +216,8 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
             if len(parts) < 3:
                 continue
             a, r, path = parts[0], parts[1], parts[2]
+            if not _is_workflow_path(path):
+                continue
             files.add(path)
             if a.isdigit():
                 added += int(a)
@@ -173,7 +225,7 @@ def collect_diff_stats(branch: str, base: str) -> dict[str, int]:
                 removed += int(r)
 
     for path in untracked.splitlines():
-        if path:
+        if path and _is_workflow_path(path):
             files.add(path)
 
     return {
@@ -275,38 +327,107 @@ def prompt_score() -> int:
         print("  please enter an integer 1-5")
 
 
+def parse_bool(s: str) -> bool:
+    return s.lower() in ("true", "1", "yes", "y")
+
+
+def append_row(row: dict, artifact_dir: Path) -> None:
+    ensure_csv_header()
+    with RESULTS_CSV.open("a", newline="") as f:
+        csv.DictWriter(f, fieldnames=CSV_COLUMNS).writerow(row)
+    (artifact_dir / "summary.json").write_text(json.dumps(row, indent=2))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workflow", required=True, choices=["a", "b", "c"])
     parser.add_argument("--task", required=True, type=int, choices=[1, 2, 3, 4])
     parser.add_argument("--run", required=True, type=int, choices=[1, 2, 3])
+
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Skip interactive prompts; require all values as flags.",
+    )
+    parser.add_argument(
+        "--skip-branch",
+        action="store_true",
+        help=(
+            "Do not check out a new branch. Use when an upstream script "
+            "(e.g. run_a_scripted.sh) already created the branch."
+        ),
+    )
+    # Non-interactive value flags.
+    parser.add_argument("--duration-seconds", type=int)
+    parser.add_argument("--prompt-hash", type=str, default="")
+    parser.add_argument("--plan-cost-usd", type=float, default=0.0)
+    parser.add_argument("--plan-tokens-input", type=int, default=0)
+    parser.add_argument("--plan-tokens-output", type=int, default=0)
+    parser.add_argument("--execute-cost-usd", type=float, default=0.0)
+    parser.add_argument("--execute-tokens-input", type=int, default=0)
+    parser.add_argument("--execute-tokens-output", type=int, default=0)
+    parser.add_argument(
+        "--total-cost-usd",
+        type=float,
+        help=(
+            "Total cost. If omitted, computed as plan + execute (workflow A) "
+            "or required for B/C."
+        ),
+    )
+    parser.add_argument("--total-tokens-input", type=int)
+    parser.add_argument("--total-tokens-output", type=int)
+    parser.add_argument("--model", type=str, default="")
+    parser.add_argument("--hermetic-mode", type=str, default="")
+    parser.add_argument("--context-source", type=str, default="")
+    parser.add_argument("--score", type=int)
+    parser.add_argument("--notes", type=str, default="")
+
     args = parser.parse_args()
 
-    confirm_clean_tree()
+    if not args.skip_branch:
+        confirm_clean_tree()
     ensure_csv_header()
     reset_target_db()
 
-    branch = checkout_run_branch(args.workflow, args.task, args.run)
-    print(f"Checked out {branch}")
+    base = WORKFLOW_BASE_BRANCHES[args.workflow]
+    if args.skip_branch:
+        branch = run_git("rev-parse", "--abbrev-ref", "HEAD")
+        expected = f"workflow-{args.workflow}/task-{args.task}/run-{args.run}"
+        if branch != expected:
+            sys.stderr.write(
+                f"--skip-branch set but HEAD is {branch}, expected "
+                f"{expected}. Refusing to record under wrong branch.\n"
+            )
+            return 2
+    else:
+        branch = checkout_run_branch(args.workflow, args.task, args.run)
+        print(f"Checked out {branch}")
 
     start = dt.datetime.now(tz=dt.timezone.utc)
-    print_workflow_prompt(args.workflow, args.task)
 
-    while True:
-        done = prompt("Type 'y' when the workflow is complete (or 'abort')")
-        if done.lower() == "abort":
-            print("Aborted. Branch left in place for inspection.")
-            return 1
-        if done.lower() in ("y", "yes"):
-            break
-
-    end = dt.datetime.now(tz=dt.timezone.utc)
-    duration = (end - start).total_seconds()
+    if args.non_interactive:
+        if args.duration_seconds is None or args.score is None:
+            sys.stderr.write(
+                "--non-interactive requires --duration-seconds and --score.\n"
+            )
+            return 2
+        duration = float(args.duration_seconds)
+        end = start + dt.timedelta(seconds=duration)
+    else:
+        print_workflow_prompt(args.workflow, args.task)
+        while True:
+            done = prompt("Type 'y' when the workflow is complete (or 'abort')")
+            if done.lower() == "abort":
+                print("Aborted. Branch left in place for inspection.")
+                return 1
+            if done.lower() in ("y", "yes"):
+                break
+        end = dt.datetime.now(tz=dt.timezone.utc)
+        duration = (end - start).total_seconds()
 
     artifact_dir = RUNS_DIR / f"{args.workflow}-{args.task}-{args.run}"
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
-    base = WORKFLOW_BASE_BRANCHES[args.workflow]
     print()
     print(f"Capturing diff (vs {base})…")
     save_diff_artifact(artifact_dir, base)
@@ -322,40 +443,84 @@ def main() -> int:
         f"  tests: {pytest_stats['tests_passed']} / {pytest_stats['tests_total']} passed"
     )
 
-    print()
-    print("Now grab token and cost numbers from the workflow:")
-    print("  - A: /cost in Claude Code")
-    print("  - B: sum across the five /speckit.* phases")
-    print("  - C: /cost in Claude Code (aggregates across personas)")
-    tokens_in = prompt_int("tokens_input")
-    tokens_out = prompt_int("tokens_output")
-    cost_usd = prompt_float("cost_usd")
-
-    score = prompt_score()
-    notes = prompt("Notes (one sentence — what defined the score)")
+    if args.non_interactive:
+        plan_cost = args.plan_cost_usd
+        plan_in = args.plan_tokens_input
+        plan_out = args.plan_tokens_output
+        exec_cost = args.execute_cost_usd
+        exec_in = args.execute_tokens_input
+        exec_out = args.execute_tokens_output
+        total_cost = (
+            args.total_cost_usd
+            if args.total_cost_usd is not None
+            else plan_cost + exec_cost
+        )
+        total_in = (
+            args.total_tokens_input
+            if args.total_tokens_input is not None
+            else plan_in + exec_in
+        )
+        total_out = (
+            args.total_tokens_output
+            if args.total_tokens_output is not None
+            else plan_out + exec_out
+        )
+        score = args.score
+        notes = args.notes
+        model = args.model
+        hermetic_mode = args.hermetic_mode
+        context_source = args.context_source
+        prompt_hash = args.prompt_hash
+    else:
+        print()
+        print("Now grab token and cost numbers from the workflow:")
+        print("  - A: /cost in Claude Code")
+        print("  - B: sum across the five /speckit.* phases")
+        print("  - C: /cost in Claude Code (aggregates across personas)")
+        total_in = prompt_int("tokens_input (total)")
+        total_out = prompt_int("tokens_output (total)")
+        total_cost = prompt_float("cost_usd (total)")
+        plan_cost = plan_in = plan_out = 0.0
+        exec_cost = exec_in = exec_out = 0.0
+        plan_cost = 0.0
+        score = prompt_score()
+        notes = prompt("Notes (one sentence — what defined the score)")
+        model = ""
+        hermetic_mode = ""
+        context_source = ""
+        prompt_hash = ""
 
     row = {
         "timestamp": end.isoformat(timespec="seconds"),
         "workflow": args.workflow,
         "task": args.task,
         "run": args.run,
+        "base_branch": base,
+        "branch_name": branch,
+        "prompt_hash": prompt_hash,
         "duration_seconds": int(duration),
         "files_changed": diff_stats["files_changed"],
         "lines_added": diff_stats["lines_added"],
         "lines_removed": diff_stats["lines_removed"],
         "tests_total": pytest_stats["tests_total"],
         "tests_passed": pytest_stats["tests_passed"],
-        "tokens_input": tokens_in,
-        "tokens_output": tokens_out,
-        "cost_usd": cost_usd,
+        "plan_call_cost_usd": plan_cost,
+        "plan_call_tokens_input": plan_in,
+        "plan_call_tokens_output": plan_out,
+        "execute_call_cost_usd": exec_cost,
+        "execute_call_tokens_input": exec_in,
+        "execute_call_tokens_output": exec_out,
+        "tokens_input": total_in,
+        "tokens_output": total_out,
+        "cost_usd": total_cost,
+        "model": model,
+        "hermetic_mode": hermetic_mode,
+        "context_source": context_source,
         "subjective_score": score,
         "notes": notes,
     }
 
-    with RESULTS_CSV.open("a", newline="") as f:
-        csv.DictWriter(f, fieldnames=CSV_COLUMNS).writerow(row)
-
-    (artifact_dir / "summary.json").write_text(json.dumps(row, indent=2))
+    append_row(row, artifact_dir)
 
     print()
     print(f"Run captured: {RESULTS_CSV.relative_to(REPO_ROOT)}")

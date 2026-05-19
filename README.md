@@ -62,15 +62,31 @@ interesting finding, not a less interesting one.
 2. All three workflows are given the **same** `CLAUDE.md`. None of the
    workflow-specific docs tip the agent off about the integer-cents
    convention; that has to be discovered.
-3. Each run happens on a fresh branch off `main`:
+3. Each run happens on a fresh branch off its workflow's base:
+   `workflow-a/*` off `main` (clean), `workflow-b/*` off `spec-kit-base`
+   (Spec Kit project files committed), `workflow-c/*` off `bmad-base`
+   (BMAD install committed). Branch name pattern:
    `workflow-{a,b,c}/task-{1..4}/run-{1..3}`.
-4. The harness (`harness/run.py`) wraps each run, captures git diff stats,
-   pytest results, wall-clock duration, token / cost figures (entered
-   manually — see _Limitations_), and a 1–5 subjective score using the
-   rubric in `rubric/scoring-rubric.md`.
-5. Per-run artifacts (diffs, transcripts) land in `results/runs/`.
+4. All Claude Code subprocesses are launched with
+   `--bare --model sonnet --add-dir target` to isolate every run from
+   the operator's global Claude Code configuration, skills, and memory
+   files. The project directory is added explicitly. Workflow A is run
+   as a two-call sequence (plan → resume execute) — labelled
+   **Scripted Plan Mode replication** in tables and the article, since
+   it preserves the methodological idea (plan first, approval boundary,
+   execute after approval, fresh cost per run, isolated session)
+   without literally being a human clicking through interactive Plan
+   Mode. The model is **Claude Sonnet 4.6**.
+5. The harness (`harness/run.py`) wraps each run, captures git diff stats,
+   pytest results, wall-clock duration, token / cost figures (split
+   per call for workflow A; aggregate for B and C), and a 1–5
+   subjective score using the rubric in `rubric/scoring-rubric.md`.
+   `harness/run_a_scripted.sh` automates workflow A end-to-end on top
+   of the harness.
+6. Per-run artifacts (diffs, transcripts, plan.md, plan-call.json,
+   execute-call.json, run-meta.json) land in `results/runs/`.
    Aggregate metrics append to `results/results.csv`.
-6. `harness/analyze.ipynb` reads the CSV and produces the charts that
+7. `harness/analyze.ipynb` reads the CSV and produces the charts that
    ship with the article.
 
 ## How to reproduce

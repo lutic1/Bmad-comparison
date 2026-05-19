@@ -17,8 +17,8 @@ specify --version
 
 Spec Kit drops its slash commands into the agent's command directory.
 After installing inside the `target/` directory you should see
-`/speckit.constitution`, `/speckit.specify`, `/speckit.plan`,
-`/speckit.tasks`, `/speckit.implement` available in Claude Code.
+`/speckit-constitution`, `/speckit-specify`, `/speckit-plan`,
+`/speckit-tasks`, `/speckit-implement` available in Claude Code.
 
 ## Per-run procedure
 
@@ -41,7 +41,7 @@ claude
 Inside Claude Code, run the five Spec Kit commands in sequence. Use the
 same `CLAUDE.md` as workflow A (no extra hints).
 
-### 1. `/speckit.constitution`
+### 1. `/speckit-constitution`
 
 Paste the contents of the box below verbatim when prompted for the
 constitution content:
@@ -61,7 +61,7 @@ constitution content:
 - Don't refactor unrelated code in the same change.
 ```
 
-### 2. `/speckit.specify`
+### 2. `/speckit-specify`
 
 Paste the **exact** prompt from `tasks/0N-*.md` (only the `## Prompt`
 body, not the acceptance criteria).
@@ -72,15 +72,15 @@ the acceptance criteria. For tasks 1, 2, and 4, answer "use your
 best judgement" or the equivalent for any question Spec Kit can
 reasonably resolve from the codebase.
 
-### 3. `/speckit.plan`
+### 3. `/speckit-plan`
 
 Accept defaults. Let Spec Kit produce its implementation plan.
 
-### 4. `/speckit.tasks`
+### 4. `/speckit-tasks`
 
 Accept defaults. Let Spec Kit decompose into tasks.
 
-### 5. `/speckit.implement`
+### 5. `/speckit-implement`
 
 Let Spec Kit run the implementation tasks end-to-end. Approve tool
 calls as they come up; do not steer mid-execution beyond approvals.
@@ -114,6 +114,6 @@ rm -f target/app.db
 ## Notes on this workflow
 
 - Don't manually edit Spec Kit's generated artifacts to "help" it.
-- If `/speckit.implement` errors out partway, let it retry once on its
+- If `/speckit-implement` errors out partway, let it retry once on its
   own. If it errors a second time, record what happened in `notes`
   and stop the run — that's a real outcome, not a do-over.
