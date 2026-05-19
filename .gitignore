@@ -64,3 +64,6 @@ results/runs/*/transcript-raw.txt
 # Local secrets
 .env
 .env.local
+
+# Claude Code runtime artifacts at repo root
+/.claude/
