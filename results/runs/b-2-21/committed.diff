@@ -1,0 +1,1283 @@
+diff --git a/target/.specify/feature.json b/target/.specify/feature.json
+new file mode 100644
+index 0000000..11ffe49
+--- /dev/null
++++ b/target/.specify/feature.json
+@@ -0,0 +1,3 @@
++{
++  "feature_directory": "specs/001-order-refund"
++}
+diff --git a/target/.specify/memory/constitution.md b/target/.specify/memory/constitution.md
+index a4670ff..44f9d01 100644
+--- a/target/.specify/memory/constitution.md
++++ b/target/.specify/memory/constitution.md
+@@ -1,50 +1,56 @@
+-# [PROJECT_NAME] Constitution
+-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
++<!--
++Sync Impact Report
++==================
++Version change: (uninitialized template) → 1.0.0
++Bump rationale: Initial ratification of the project constitution; the previous
++file contained only template placeholders, so this is a MAJOR-equivalent
++initialization (1.0.0).
++
++Modified principles: none (initial adoption)
++Added sections:
++  - Core Principles (7 principles, verbatim from user input)
++  - Governance
++Removed sections:
++  - [SECTION_2_NAME] / [SECTION_3_NAME] placeholders (not used; the
++    project chose not to define optional sections at ratification)
++
++Templates requiring updates:
++  - ✅ .specify/templates/plan-template.md — Constitution Check gate is
++    constitution-agnostic ("Gates determined based on constitution file");
++    no change required.
++  - ✅ .specify/templates/spec-template.md — no constitution-specific
++    references; aligned.
++  - ✅ .specify/templates/tasks-template.md — no constitution-specific
++    references; aligned.
++  - ✅ .specify/templates/checklist-template.md — no constitution-specific
++    references; aligned.
++
++Follow-up TODOs: none
++-->
++
++# Project Constitution
+ 
+ ## Core Principles
+ 
+-### [PRINCIPLE_1_NAME]
+-<!-- Example: I. Library-First -->
+-[PRINCIPLE_1_DESCRIPTION]
+-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+-
+-### [PRINCIPLE_2_NAME]
+-<!-- Example: II. CLI Interface -->
+-[PRINCIPLE_2_DESCRIPTION]
+-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+-
+-### [PRINCIPLE_3_NAME]
+-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+-[PRINCIPLE_3_DESCRIPTION]
+-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+-
+-### [PRINCIPLE_4_NAME]
+-<!-- Example: IV. Integration Testing -->
+-[PRINCIPLE_4_DESCRIPTION]
+-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+-
+-### [PRINCIPLE_5_NAME]
+-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+-[PRINCIPLE_5_DESCRIPTION]
+-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+-
+-## [SECTION_2_NAME]
+-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+-
+-[SECTION_2_CONTENT]
+-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+-
+-## [SECTION_3_NAME]
+-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+-
+-[SECTION_3_CONTENT]
+-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
++- Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest.
++- Idiomatic FastAPI: small route functions, Pydantic models for
++  request and response shapes, dependency injection via Depends.
++- Tests are non-optional. Minimum 80% line coverage on changed files.
++  Every new route ships with happy-path and at least one error-path
++  test.
++- Conventional commits: feat:, fix:, refactor:, test:, docs:, chore:.
++- No new third-party dependencies without a stated justification.
++- Type hints on every public function and route handler.
++- Don't refactor unrelated code in the same change.
+ 
+ ## Governance
+-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+ 
+-[GOVERNANCE_RULES]
+-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
++This constitution supersedes ad-hoc practices. Amendments MUST be made via
++pull request with a documented rationale and a semantic version bump:
++MAJOR for backward-incompatible principle removal or redefinition, MINOR
++for added or materially expanded principles, PATCH for clarifications and
++wording fixes. All PRs and reviews MUST verify compliance with the
++principles above; deviations MUST be explicitly justified in the PR
++description.
+ 
+-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
++**Version**: 1.0.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-19
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+index 7e6443a..dbf6198 100644
+--- a/target/CLAUDE.md
++++ b/target/CLAUDE.md
+@@ -1,4 +1,55 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
++
+ <!-- SPECKIT START -->
+-For additional context about technologies to be used, project structure,
+-shell commands, and other important information, read the current plan
++## Active feature
++
++- Plan: [specs/001-order-refund/plan.md](specs/001-order-refund/plan.md)
+ <!-- SPECKIT END -->
+diff --git a/target/specs/001-order-refund/checklists/requirements.md b/target/specs/001-order-refund/checklists/requirements.md
+new file mode 100644
+index 0000000..3e052bd
+--- /dev/null
++++ b/target/specs/001-order-refund/checklists/requirements.md
+@@ -0,0 +1,37 @@
++# Specification Quality Checklist: Order Refund
++
++**Purpose**: Validate specification completeness and quality before proceeding to planning
++**Created**: 2026-05-19
++**Feature**: [spec.md](../spec.md)
++
++## Content Quality
++
++- [x] No implementation details (languages, frameworks, APIs)
++- [x] Focused on user value and business needs
++- [x] Written for non-technical stakeholders
++- [x] All mandatory sections completed
++
++## Requirement Completeness
++
++- [x] No [NEEDS CLARIFICATION] markers remain
++- [x] Requirements are testable and unambiguous
++- [x] Success criteria are measurable
++- [x] Success criteria are technology-agnostic (no implementation details)
++- [x] All acceptance scenarios are defined
++- [x] Edge cases are identified
++- [x] Scope is clearly bounded
++- [x] Dependencies and assumptions identified
++
++## Feature Readiness
++
++- [x] All functional requirements have clear acceptance criteria
++- [x] User scenarios cover primary flows
++- [x] Feature meets measurable outcomes defined in Success Criteria
++- [x] No implementation details leak into specification
++
++## Notes
++
++- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
++- The spec input mentions the URL path `POST /orders/{order_id}/refund`; this is
++  preserved verbatim in the **Input** quote (as it came from the requester) but is
++  not introduced into requirements or success criteria, which remain behavior-focused.
+diff --git a/target/specs/001-order-refund/contracts/refund.openapi.yaml b/target/specs/001-order-refund/contracts/refund.openapi.yaml
+new file mode 100644
+index 0000000..079dc5b
+--- /dev/null
++++ b/target/specs/001-order-refund/contracts/refund.openapi.yaml
+@@ -0,0 +1,86 @@
++openapi: 3.0.3
++info:
++  title: Order Refund
++  version: "1.0.0"
++  description: |
++    Contract for the `POST /orders/{order_id}/refund` endpoint added by
++    the order-refund feature.
++
++paths:
++  /orders/{order_id}/refund:
++    post:
++      summary: Refund an order
++      operationId: refundOrder
++      tags: [refunds]
++      parameters:
++        - in: path
++          name: order_id
++          required: true
++          schema: { type: integer, minimum: 1 }
++        - in: header
++          name: X-User-Id
++          required: true
++          description: Caller identity (existing service convention).
++          schema: { type: integer, minimum: 1 }
++      responses:
++        "201":
++          description: Refund created. Order is now marked refunded.
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Refund" }
++        "400":
++          description: |
++            Refund window expired — the order was created more than
++            30 days before the request.
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Error" }
++              example: { detail: "refund window expired" }
++        "401":
++          description: Missing or unknown `X-User-Id`.
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Error" }
++        "403":
++          description: Order exists but does not belong to the caller.
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Error" }
++              example: { detail: "forbidden" }
++        "404":
++          description: Order not found.
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Error" }
++              example: { detail: "order not found" }
++        "409":
++          description: Order has already been refunded.
++          content:
++            application/json:
++              schema: { $ref: "#/components/schemas/Error" }
++              example: { detail: "order already refunded" }
++
++components:
++  schemas:
++    Refund:
++      type: object
++      required: [id, order_id, amount, created_at]
++      properties:
++        id:
++          type: integer
++          description: Refund record id.
++        order_id:
++          type: integer
++          description: Id of the refunded order.
++        amount:
++          type: integer
++          description: Refund amount in integer cents (equals order total).
++        created_at:
++          type: string
++          description: ISO-8601 timestamp the refund was issued (UTC).
++    Error:
++      type: object
++      required: [detail]
++      properties:
++        detail:
++          type: string
+diff --git a/target/specs/001-order-refund/data-model.md b/target/specs/001-order-refund/data-model.md
+new file mode 100644
+index 0000000..ef9db61
+--- /dev/null
++++ b/target/specs/001-order-refund/data-model.md
+@@ -0,0 +1,50 @@
++# Phase 1 Data Model — Order Refund
++
++## Changes to existing entities
++
++### `Order` (existing — additive change)
++
++| Column        | Type             | Constraints                  | Notes |
++|---------------|------------------|------------------------------|-------|
++| `refunded_at` | `DateTime` (UTC) | NULL allowed; default `NULL` | Set to `datetime.utcnow()` when the order is refunded. `NULL` means the order has not been refunded. |
++
++State transitions:
++
++- `refunded_at IS NULL` → `refunded_at = <utcnow>`: occurs exactly once
++  per order, on a successful refund.
++- The reverse transition does not exist in this feature.
++
++## New entities
++
++### `Refund`
++
++| Column       | Type                | Constraints                                 | Notes |
++|--------------|---------------------|---------------------------------------------|-------|
++| `id`         | `Integer`           | PRIMARY KEY                                 | Autoincrement. |
++| `order_id`   | `Integer`           | FOREIGN KEY → `orders.id`, NOT NULL, UNIQUE | UNIQUE enforces "at most one refund per order" at the DB level. |
++| `amount`     | `Integer`           | NOT NULL                                    | Stored as integer cents, mirroring `Order.total`. Equal to `order.total` at refund time. |
++| `created_at` | `DateTime` (UTC)    | NOT NULL, default `datetime.utcnow`         | Time the refund was issued. |
++
++Relationships:
++
++- `Refund.order` ↔ `Order.refund` (one-to-one; back-populated).
++
++## Validation rules (enforced in the route handler)
++
++- The caller must be authenticated (401 otherwise — enforced by
++  `get_current_user`).
++- The order must exist (404 otherwise).
++- The order must belong to the authenticated user (403 otherwise).
++- `datetime.utcnow() - order.created_at <= timedelta(days=30)` (400 with
++  `"refund window expired"` otherwise).
++- The order must not already be refunded — i.e., `order.refunded_at IS
++  NULL` (409 with `"order already refunded"` otherwise). The UNIQUE
++  constraint on `refunds.order_id` provides a backstop under
++  concurrency.
++
++## Lifecycle summary
++
++```text
++[Order created] ──(within 30 days, owner, not refunded)──▶ [Refund row created]
++                                                            └─ Order.refunded_at = now
++```
+diff --git a/target/specs/001-order-refund/plan.md b/target/specs/001-order-refund/plan.md
+new file mode 100644
+index 0000000..302bb70
+--- /dev/null
++++ b/target/specs/001-order-refund/plan.md
+@@ -0,0 +1,108 @@
++# Implementation Plan: Order Refund
++
++**Branch**: `001-order-refund` | **Date**: 2026-05-19 | **Spec**: [spec.md](./spec.md)
++
++**Input**: Feature specification from `specs/001-order-refund/spec.md`
++
++## Summary
++
++Add `POST /orders/{order_id}/refund` to the existing FastAPI service. The
++endpoint authenticates the caller via the existing `X-User-Id` header
++(`get_current_user`), looks up the order, rejects when it does not exist
++or does not belong to the caller, rejects when the order is older than
++30 days, rejects when the order is already refunded, and otherwise marks
++the order as refunded and creates a `Refund` row, returning the refund
++record. A nullable `refunded_at` column is added to `Order` to track the
++refunded state. A new `Refund` table records (`id`, `order_id` UNIQUE,
++`amount`, `created_at`). Tests cover the happy path plus all rejection
++paths.
++
++## Technical Context
++
++**Language/Version**: Python 3.11+
++
++**Primary Dependencies**: FastAPI, SQLAlchemy 2.x (declarative
++`Mapped[...]`), Pydantic v2
++
++**Storage**: SQLite via SQLAlchemy. Schema created from `Base.metadata`
++at startup; no migrations (per project convention).
++
++**Testing**: pytest, FastAPI `TestClient`, in-memory SQLite (via the
++existing `client` fixture in `tests/conftest.py`).
++
++**Target Platform**: Local Python service (single process); same as the
++rest of the service.
++
++**Project Type**: web-service (single project, `src/` + `tests/`).
++
++**Performance Goals**: No new performance targets; the endpoint
++performs O(1) primary-key lookups and one or two inserts/updates.
++
++**Constraints**: No new third-party dependencies. Stdlib first. Do not
++refactor unrelated code. Authentication remains the existing
++`X-User-Id` header convention.
++
++**Scale/Scope**: Single endpoint, one new table, one new column on
++`Order`, one new route module section, one new test module.
++
++## Constitution Check
++
++*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
++
++Constitution v1.0.0 principles vs. this plan:
++
++| Principle | Status | Notes |
++|-----------|--------|-------|
++| Stack: Python 3.11+, FastAPI, SQLAlchemy 2.x, Pydantic v2, pytest | ✅ | Uses the existing stack; no additions. |
++| Idiomatic FastAPI (small routes, Pydantic models, Depends) | ✅ | New route is a single small handler reusing `get_db` and `get_current_user`. |
++| Tests non-optional; ≥80% line coverage on changed files; happy + error path | ✅ | Test plan covers happy path and 5 error paths (unauth, not found, not owned, outside window, already refunded). |
++| Conventional commits | ✅ | Commits will use `feat:` / `test:` prefixes. |
++| No new third-party deps without justification | ✅ | None added. |
++| Type hints on public functions and route handlers | ✅ | All new handlers/helpers are typed. |
++| Don't refactor unrelated code in the same change | ✅ | Changes scoped to: `models.py` (additive), new `routes/refunds.py` or new section in `routes/orders.py`, router registration in `main.py`, new test file. |
++
++**Result**: PASS. No violations; Complexity Tracking section not needed.
++
++## Project Structure
++
++### Documentation (this feature)
++
++```text
++specs/001-order-refund/
++├── plan.md              # This file
++├── research.md          # Phase 0 output
++├── data-model.md        # Phase 1 output
++├── quickstart.md        # Phase 1 output
++├── contracts/
++│   └── refund.openapi.yaml   # Phase 1 output
++└── tasks.md             # Phase 2 output (created by /speckit-tasks)
++```
++
++### Source Code (repository root)
++
++```text
++src/
++└── api/
++    ├── main.py                 # register new router
++    ├── models.py               # +Refund table; +Order.refunded_at column
++    ├── deps.py                 # unchanged
++    └── routes/
++        ├── orders.py           # unchanged
++        └── refunds.py          # NEW — POST /orders/{order_id}/refund
++
++tests/
++├── conftest.py                 # unchanged
++└── test_refunds.py             # NEW — happy + 5 error paths
++```
++
++**Structure Decision**: Single-project FastAPI layout already in place.
++The refund endpoint is mounted under the existing `/orders` prefix via a
++new router module (`api/routes/refunds.py`) registered in `main.py`,
++keeping `orders.py` untouched (respects "don't refactor unrelated
++code"). The new `Refund` model and new `Order.refunded_at` column live
++in `api/models.py` alongside the existing models.
++
++## Complexity Tracking
++
++> Not applicable — Constitution Check passes without justified
++> violations.
+diff --git a/target/specs/001-order-refund/quickstart.md b/target/specs/001-order-refund/quickstart.md
+new file mode 100644
+index 0000000..fa3fa7e
+--- /dev/null
++++ b/target/specs/001-order-refund/quickstart.md
+@@ -0,0 +1,81 @@
++# Quickstart — Order Refund
++
++This is the manual smoke test for the new endpoint, runnable against a
++local dev instance of the service. Automated coverage lives in
++`tests/test_refunds.py`.
++
++## Prereqs
++
++- The service is runnable per the repo's existing instructions.
++- `app.db` may be wiped between runs (per project convention) — that's
++  fine; the steps below create everything they need.
++
++## Steps
++
++1. Start the service.
++
++2. Create a user.
++
++   ```bash
++   curl -s -X POST http://localhost:8000/users \
++     -H "content-type: application/json" \
++     -d '{"email":"alice@example.com","name":"Alice"}'
++   ```
++
++   Note the returned `id` (call it `U1`).
++
++3. Create an order for that user.
++
++   ```bash
++   curl -s -X POST http://localhost:8000/orders \
++     -H "content-type: application/json" \
++     -H "X-User-Id: U1" \
++     -d '{"items":[{"sku":"ABC","quantity":1,"unit_price":12.50}]}'
++   ```
++
++   Note the returned `id` (call it `O1`).
++
++4. **Happy path** — refund the order.
++
++   ```bash
++   curl -i -X POST http://localhost:8000/orders/O1/refund \
++     -H "X-User-Id: U1"
++   ```
++
++   Expect `201` and a JSON body shaped like
++   `{"id": ..., "order_id": O1, "amount": 1250, "created_at": "..."}`.
++
++5. **Already refunded** — repeat step 4.
++
++   Expect `409` with `{"detail": "order already refunded"}`.
++
++6. **Not owned** — create a second user `U2`, then attempt to refund
++   `O1` as `U2`.
++
++   Expect `403` with `{"detail": "forbidden"}`.
++
++7. **Not found** — refund a non-existent order id.
++
++   ```bash
++   curl -i -X POST http://localhost:8000/orders/999999/refund \
++     -H "X-User-Id: U1"
++   ```
++
++   Expect `404` with `{"detail": "order not found"}`.
++
++8. **Unauthenticated** — refund without the header.
++
++   ```bash
++   curl -i -X POST http://localhost:8000/orders/O1/refund
++   ```
++
++   Expect `401`.
++
++9. **Outside window** — can't be exercised purely over HTTP (no way to
++   backdate via the API). Covered by `tests/test_refunds.py`, which
++   seeds an order with `created_at` set to 31 days ago and asserts the
++   `400` response.
++
++## Done
++
++All five rejection paths plus the happy path return as documented.
+diff --git a/target/specs/001-order-refund/research.md b/target/specs/001-order-refund/research.md
+new file mode 100644
+index 0000000..2000601
+--- /dev/null
++++ b/target/specs/001-order-refund/research.md
+@@ -0,0 +1,115 @@
++# Phase 0 Research — Order Refund
++
++The spec left a handful of items implied-but-not-stated. The clarify
++step was skipped, so this document records the defaults chosen and why.
++No `NEEDS CLARIFICATION` markers remain.
++
++## Decision 1 — Refund record fields
++
++- **Decision**: `Refund(id, order_id, amount, created_at)`. `order_id`
++  carries a UNIQUE constraint.
++- **Rationale**: Self-contained historical record. Storing `amount` on
++  the refund (rather than deriving it from the order at read time)
++  keeps the refund stable if order data ever changes. Minimal — matches
++  CLAUDE.md's "no over-engineering" and "stdlib first" guidance. The
++  UNIQUE constraint on `order_id` makes "at most one refund per order"
++  a database-level invariant, which is the simplest way to satisfy
++  FR-007 / SC-003 under any concurrency.
++- **Alternatives considered**:
++  - Derive amount from `Order.total` at read time — rejected: refund
++    record becomes coupled to the order's mutable state.
++  - Add a `reason` text field — rejected: not requested; speculative.
++  - Add a `status` (pending/completed) field — rejected: refunds in
++    this feature are synchronous internal state changes; no lifecycle.
++
++## Decision 2 — Marking the order as refunded
++
++- **Decision**: Add a nullable `refunded_at: datetime | None` column to
++  `Order`. `None` means not refunded; a timestamp means refunded.
++- **Rationale**: Single column captures both the boolean state and the
++  moment it happened (useful for the response and for "already
++  refunded" rejection without joining the `refunds` table). Aligns
++  with the existing `created_at` pattern on `Order`.
++- **Alternatives considered**:
++  - Boolean `is_refunded` — rejected: loses the timestamp and is
++    redundant with the refund row's `created_at`.
++  - Compute refunded state via join on `refunds` — rejected: extra
++    query for every order read; not warranted.
++
++## Decision 3 — Ownership disclosure (404 vs 403)
++
++- **Decision**: Mirror the existing pattern in `api/routes/orders.py`:
++  return `404` when the order does not exist, `403` when it exists but
++  belongs to another user.
++- **Rationale**: Consistency with the only other place in the codebase
++  that handles the same situation (`get_order`). Adopting a different
++  policy here would be an unrelated refactor.
++- **Alternatives considered**:
++  - Collapse both to `404` to avoid leaking existence — rejected for
++    this change: would diverge from the rest of the API for marginal
++    benefit and would constitute an unrelated policy change.
++
++## Decision 4 — HTTP status codes for the other rejection paths
++
++- **Decision**:
++  - Missing/invalid `X-User-Id` → `401` (already handled by
++    `get_current_user`).
++  - Order older than 30 days → `400` with detail
++    `"refund window expired"`.
++  - Order already refunded → `409` with detail
++    `"order already refunded"`.
++  - Order not found / not owned → `404` / `403` per Decision 3.
++- **Rationale**: `409 Conflict` matches "state precludes the action";
++  `400` matches "request violates a business rule on the resource".
++- **Alternatives considered**:
++  - `422` for the 30-day window — rejected: the request body itself is
++    valid; the rule is on the resource state.
++
++## Decision 5 — "Within 30 days" boundary
++
++- **Decision**: Inclusive of 30 days. Computed as
++  `now - order.created_at <= timedelta(days=30)` using
++  `datetime.utcnow()` (matching the project's existing convention in
++  `models.py`).
++- **Rationale**: Spec edge cases already state "exactly 30 days … is
++  considered within the window".
++- **Alternatives considered**:
++  - Exclusive (`< 30 days`) — rejected: contradicts the spec.
++
++## Decision 6 — Refund amount source
++
++- **Decision**: Refund amount = `order.total` (integer cents), copied
++  onto the refund row at creation time.
++- **Rationale**: Spec assumption explicitly states full-order refunds
++  only; partial refunds are out of scope. Using the existing cents
++  representation keeps the data model uniform.
++- **Alternatives considered**:
++  - Accept an `amount` in the request body — rejected: would imply
++    partial refunds, which are out of scope.
++
++## Decision 7 — Where the route lives
++
++- **Decision**: New module `src/api/routes/refunds.py` that defines an
++  `APIRouter(prefix="/orders", tags=["refunds"])` and is registered in
++  `src/api/main.py`. The existing `routes/orders.py` is untouched.
++- **Rationale**: Keeps the diff scoped (no unrelated edits to
++  `orders.py`) and matches FastAPI's normal pattern of one router
++  module per resource concern.
++- **Alternatives considered**:
++  - Add the endpoint to `routes/orders.py` — rejected: would mix
++    refund concerns into the orders module and broaden the diff for
++    no benefit.
++
++## Decision 8 — Testing approach
++
++- **Decision**: One new file `tests/test_refunds.py` using the existing
++  `client` fixture from `conftest.py`. One test per behaviour, named
++  `it_should_*` style consistent with the project's existing tests.
++  Order ages older than 30 days are produced by directly setting
++  `order.created_at` on the seeded row (not by sleeping).
++- **Rationale**: Matches the project's stated testing conventions
++  (one behaviour per test, in-memory SQLite per test, no time-based
++  flakiness). No new fixtures or dependencies needed.
++- **Alternatives considered**:
++  - Freezing time with a library (`freezegun`) — rejected: introduces
++    a new dependency for a problem solvable by writing a timestamp.
+diff --git a/target/specs/001-order-refund/spec.md b/target/specs/001-order-refund/spec.md
+new file mode 100644
+index 0000000..2a7e8a6
+--- /dev/null
++++ b/target/specs/001-order-refund/spec.md
+@@ -0,0 +1,162 @@
++# Feature Specification: Order Refund
++
++**Feature Branch**: `001-order-refund`
++
++**Created**: 2026-05-19
++
++**Status**: Draft
++
++**Input**: User description: "Add a `POST /orders/{order_id}/refund` endpoint. It should: require authentication, validate the order exists and belongs to the requesting user, only allow refunds within 30 days of order creation, mark the order as refunded (add a field if needed), and return the refund record. Include tests."
++
++## User Scenarios & Testing *(mandatory)*
++
++### User Story 1 - Customer refunds a recent order (Priority: P1)
++
++An authenticated customer requests a refund on an order they own that was
++placed within the last 30 days. The system records the refund, marks the
++order as refunded, and returns the refund record so the customer (or the
++client app on their behalf) has confirmation.
++
++**Why this priority**: This is the entire feature. Without it, customers
++cannot self-serve refunds for recent purchases — which is the value the
++endpoint exists to deliver.
++
++**Independent Test**: As an authenticated user, submit a refund request
++for an order you own that was created less than 30 days ago, and confirm
++the response contains a refund record and that subsequent reads of the
++order show it as refunded.
++
++**Acceptance Scenarios**:
++
++1. **Given** an authenticated user owns order O created 5 days ago and O
++   is not yet refunded, **When** the user submits a refund request for O,
++   **Then** the system records a refund, marks O as refunded, and
++   returns the refund record.
++2. **Given** order O has already been refunded, **When** the same user
++   submits another refund request for O, **Then** the system rejects the
++   request and does not create a duplicate refund.
++
++---
++
++### User Story 2 - Refund attempt is rejected when ineligible (Priority: P1)
++
++A requester attempts to refund an order that they don't own, that
++doesn't exist, or that is older than 30 days. The system rejects the
++request with a clear error and does not modify any order.
++
++**Why this priority**: Without rejection paths, the feature would expose
++customer data across accounts and allow refunds outside the policy
++window — both of which violate the requested constraints.
++
++**Independent Test**: Make refund requests against (a) a non-existent
++order id, (b) an order owned by a different user, and (c) an order
++created more than 30 days ago, and confirm each is rejected and no order
++state changes.
++
++**Acceptance Scenarios**:
++
++1. **Given** no order exists with id X, **When** an authenticated user
++   submits a refund request for X, **Then** the system rejects the
++   request as not found.
++2. **Given** order O exists but belongs to a different user, **When** an
++   authenticated user submits a refund request for O, **Then** the
++   system rejects the request and O is unchanged.
++3. **Given** order O is owned by the requester but was created 31 days
++   ago, **When** the user submits a refund request for O, **Then** the
++   system rejects the request as outside the refund window and O is
++   unchanged.
++
++---
++
++### User Story 3 - Unauthenticated refund attempt is rejected (Priority: P1)
++
++A request to the refund endpoint without authentication credentials is
++rejected before any order lookup or state change occurs.
++
++**Why this priority**: Authentication is an explicit requirement;
++without it, anyone could refund any order.
++
++**Independent Test**: Submit a refund request with no authentication
++header and confirm the request is rejected and no order state changes.
++
++**Acceptance Scenarios**:
++
++1. **Given** no authentication is provided, **When** a refund request is
++   submitted for any order, **Then** the system rejects the request as
++   unauthenticated and performs no order lookup or modification.
++
++---
++
++### Edge Cases
++
++- A second refund request for an order already marked refunded MUST be
++  rejected (no duplicate refund records, no double processing).
++- A refund request submitted exactly 30 days after order creation is
++  considered within the window; one submitted at 30 days + any amount of
++  time after is outside the window.
++- A refund request for an order id that is malformed or non-numeric MUST
++  be rejected as a bad request.
++
++## Requirements *(mandatory)*
++
++### Functional Requirements
++
++- **FR-001**: System MUST require authentication on the refund endpoint
++  and reject unauthenticated requests before performing any order
++  lookup or state change.
++- **FR-002**: System MUST verify the targeted order exists and reject
++  the request when it does not.
++- **FR-003**: System MUST verify the targeted order belongs to the
++  authenticated requester and reject the request when it does not.
++- **FR-004**: System MUST reject refund requests for orders created more
++  than 30 days before the request time.
++- **FR-005**: System MUST mark the order as refunded upon a successful
++  refund, persisting this state on the order record.
++- **FR-006**: System MUST create and persist a refund record for each
++  successful refund.
++- **FR-007**: System MUST reject a refund request for an order that is
++  already marked refunded, and MUST NOT create a duplicate refund
++  record.
++- **FR-008**: System MUST return the refund record in the response of a
++  successful refund request.
++- **FR-009**: Feature MUST ship with automated tests covering the
++  happy path and the rejection paths (unauthenticated, not found,
++  not owned, outside 30-day window, already refunded).
++
++### Key Entities *(include if feature involves data)*
++
++- **Order**: The existing order being refunded. Must carry a refunded
++  state (added if not already present) and retain its creation
++  timestamp so the 30-day window can be evaluated.
++- **Refund**: A record produced when a refund succeeds. Associates with
++  the order it refunds and captures when the refund was issued.
++
++## Success Criteria *(mandatory)*
++
++### Measurable Outcomes
++
++- **SC-001**: 100% of refund requests that meet all eligibility
++  conditions (authenticated, order exists, order belongs to requester,
++  within 30 days, not already refunded) result in the order being
++  marked refunded and a refund record returned to the requester.
++- **SC-002**: 100% of refund requests that fail any one of those
++  conditions are rejected and leave the order unchanged.
++- **SC-003**: No refund request results in more than one refund record
++  for the same order.
++- **SC-004**: Automated tests cover the happy path and every documented
++  rejection path, and all pass.
++
++## Assumptions
++
++- Authentication uses the project's existing user-identification
++  mechanism for protected endpoints; no new auth scheme is being
++  introduced as part of this feature.
++- "Within 30 days" is measured as the elapsed time between the order's
++  creation timestamp and the time the refund request is received,
++  with 30 days treated as inclusive.
++- Refunds in this feature are an internal state change and recording
++  step; no integration with an external payment processor is in scope.
++- The refund amount equals the order's full amount; partial refunds are
++  out of scope for this feature.
++- Only the order's owner can initiate a refund through this endpoint;
++  administrative or support-initiated refunds are out of scope.
+diff --git a/target/specs/001-order-refund/tasks.md b/target/specs/001-order-refund/tasks.md
+new file mode 100644
+index 0000000..03eb57e
+--- /dev/null
++++ b/target/specs/001-order-refund/tasks.md
+@@ -0,0 +1,168 @@
++---
++
++description: "Task list for the Order Refund feature"
++---
++
++# Tasks: Order Refund
++
++**Input**: Design documents from `/specs/001-order-refund/`
++
++**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/, quickstart.md
++
++**Tests**: Included — the feature spec explicitly requests tests
++("Include tests."), and the constitution makes happy-path + error-path
++tests non-optional.
++
++**Organization**: Tasks are grouped by user story so each story stays
++independently testable. US1 = happy path, US2 = ineligible rejections,
++US3 = unauthenticated rejection (all P1 in spec.md).
++
++## Format: `[ID] [P?] [Story] Description`
++
++- **[P]**: Can run in parallel (different files, no dependencies)
++- **[Story]**: Which user story this task belongs to (US1/US2/US3)
++- Paths below are project-relative to repo root.
++
++## Path Conventions
++
++- Source: `src/api/...`
++- Tests: `tests/...`
++
++---
++
++## Phase 1: Setup (Shared Infrastructure)
++
++**Purpose**: Establish a clean baseline before touching application code.
++
++- [X] T001 Run `pytest` from repo root to confirm the existing suite passes on a clean working tree (baseline)
++
++---
++
++## Phase 2: Foundational (Blocking Prerequisites)
++
++**Purpose**: Data-model changes that every user story depends on.
++
++**⚠️ CRITICAL**: No user story implementation can begin until Phase 2 is complete.
++
++- [X] T002 Add nullable `refunded_at: Mapped[datetime | None]` column to `Order` in `src/api/models.py` (per `specs/001-order-refund/data-model.md`)
++- [X] T003 Add `Refund` model in `src/api/models.py` (`id` PK; `order_id` FK→`orders.id`, NOT NULL, UNIQUE; `amount` Integer NOT NULL; `created_at` DateTime default `datetime.utcnow`) and wire the `Order.refund` ↔ `Refund.order` one-to-one relationship (sequential after T002 — same file)
++
++**Checkpoint**: Schema ready — `Base.metadata.create_all` will produce the new column and table.
++
++---
++
++## Phase 3: User Story 1 - Customer refunds a recent order (Priority: P1) 🎯 MVP
++
++**Goal**: Authenticated owner can refund a ≤30-day-old, not-yet-refunded order and receive the refund record.
++
++**Independent Test**: As an authenticated owner, POST to the new endpoint for an order created less than 30 days ago and confirm `201` with a refund record body and that the order is now marked refunded.
++
++### Tests for User Story 1
++
++> Write the test first; it should fail until T006/T007 land.
++
++- [X] T004 [US1] Add happy-path test `it_should_refund_a_recent_owned_order` in `tests/test_refunds.py`: seed a user + order created 5 days ago, POST `/orders/{id}/refund` with `X-User-Id`, assert `201`, body shape `{id, order_id, amount, created_at}` with `amount == order.total`, and that a subsequent `GET /orders/{id}` reflects the refunded state
++
++### Implementation for User Story 1
++
++- [X] T005 [US1] Create `src/api/routes/refunds.py`: define a `RefundOut` Pydantic v2 model (`id: int`, `order_id: int`, `amount: int`, `created_at: str`) and an `APIRouter(prefix="/orders", tags=["refunds"])` with `POST /{order_id}/refund` returning `RefundOut` with status `201`, using `Depends(get_db)` + `Depends(get_current_user)`; on success create a `Refund(order_id=order.id, amount=order.total)` row, set `order.refunded_at = datetime.utcnow()`, commit, refresh, return `RefundOut`
++- [X] T006 [US1] Register the refunds router in `src/api/main.py` (`from api.routes import refunds` + `app.include_router(refunds.router)`)
++
++**Checkpoint**: Happy-path test (T004) passes. Endpoint is live and usable.
++
++---
++
++## Phase 4: User Story 2 - Ineligible refund rejections (Priority: P1)
++
++**Goal**: Refund requests that fail ownership, existence, 30-day window, or already-refunded checks are rejected with the documented status codes and leave the order unchanged.
++
++**Independent Test**: Drive the endpoint through each rejection condition and assert (a) the correct status code, (b) the documented `detail` message, (c) the order's refunded state is unchanged.
++
++### Tests for User Story 2
++
++- [X] T007 [US2] Add test `it_should_404_when_the_order_does_not_exist` in `tests/test_refunds.py` (POST to a non-existent id → `404` with `detail == "order not found"`)
++- [X] T008 [US2] Add test `it_should_403_when_the_order_is_not_owned` in `tests/test_refunds.py` (user A owns order; user B POSTs refund → `403` with `detail == "forbidden"`; verify `order.refunded_at` is still `None`)
++- [X] T009 [US2] Add test `it_should_400_when_outside_the_30_day_window` in `tests/test_refunds.py` (seed an order, then set `order.created_at = datetime.utcnow() - timedelta(days=31)` via the test DB session, POST refund → `400` with `detail == "refund window expired"`; verify `order.refunded_at` is still `None`)
++- [X] T010 [US2] Add test `it_should_409_when_the_order_is_already_refunded` in `tests/test_refunds.py` (refund once, then POST again → `409` with `detail == "order already refunded"`; verify only one row exists in the `refunds` table)
++
++### Implementation for User Story 2
++
++- [X] T011 [US2] In `src/api/routes/refunds.py`, ensure the handler raises `HTTPException(404, "order not found")` when `db.get(Order, order_id)` is `None`; `HTTPException(403, "forbidden")` when `order.user_id != user.id`; `HTTPException(400, "refund window expired")` when `datetime.utcnow() - order.created_at > timedelta(days=30)`; `HTTPException(409, "order already refunded")` when `order.refunded_at is not None`. Checks happen in this order (auth → exists → owned → window → already-refunded), matching the rejection-path tests
++
++**Checkpoint**: T007–T010 pass.
++
++---
++
++## Phase 5: User Story 3 - Unauthenticated rejection (Priority: P1)
++
++**Goal**: Requests with no `X-User-Id` header are rejected before the route body runs.
++
++**Independent Test**: POST to the endpoint with no header, assert `401`, and confirm the targeted order is unchanged.
++
++### Tests for User Story 3
++
++- [X] T012 [US3] Add test `it_should_401_when_unauthenticated` in `tests/test_refunds.py` (POST `/orders/{id}/refund` with no `X-User-Id` header → `401`; verify the order's `refunded_at` is still `None` via a subsequent authenticated `GET`)
++
++### Implementation for User Story 3
++
++- No new application code required: the existing `get_current_user` dependency in `src/api/deps.py` raises `401` for a missing/unknown header. T012 confirms it applies to the new route as well.
++
++**Checkpoint**: All three user stories independently testable; all P1 work complete.
++
++---
++
++## Phase 6: Polish & Cross-Cutting Concerns
++
++- [X] T013 Run `pytest` from repo root; confirm the full suite (including the new `tests/test_refunds.py`) passes
++- [X] T014 Verify changed-file line coverage ≥80% on `src/api/routes/refunds.py` and on the additive changes in `src/api/models.py` — `pytest-cov` not installed in this venv (would be an unrelated dependency add); verified by inspection that every branch in `refunds.py` is hit by a test in `tests/test_refunds.py` (404, 403, 400, 409, 201 happy path, 401 auth)
++- [ ] T015 Walk through `specs/001-order-refund/quickstart.md` against a local instance and confirm each step returns the documented status code / body — **not run** in this session (no live server); equivalent assertions exist in `tests/test_refunds.py`
++
++---
++
++## Dependencies & Execution Order
++
++### Phase Dependencies
++
++- **Setup (Phase 1)**: no dependencies.
++- **Foundational (Phase 2)**: depends on Setup; **blocks all user stories**.
++- **US1 (Phase 3)**: depends on Foundational.
++- **US2 (Phase 4)**: depends on Foundational; T011 builds on T005 (same file).
++- **US3 (Phase 5)**: depends on Foundational; no new code.
++- **Polish (Phase 6)**: depends on every preceding user story.
++
++### Within-Story Dependencies
++
++- US1: T004 (test) → T005 (route module) → T006 (router registration). T005 and T006 touch different files but T006 only makes sense once T005 exists.
++- US2: T011 (handler logic) is the single implementation task all four US2 tests depend on. Tests T007–T010 all live in `tests/test_refunds.py` so they're authored sequentially.
++- US3: T012 only; no implementation task.
++
++### Parallel Opportunities
++
++- Very limited within this feature because nearly all edits land in just three files (`src/api/models.py`, `src/api/routes/refunds.py`, `tests/test_refunds.py`). No tasks are marked `[P]` for that reason.
++
++---
++
++## Implementation Strategy
++
++### MVP First (User Story 1 only)
++
++1. Phase 1 (T001) → Phase 2 (T002, T003) → Phase 3 (T004, T005, T006).
++2. Validate the happy path against `tests/test_refunds.py::it_should_refund_a_recent_owned_order`.
++3. The endpoint is shippable at this point if rejection paths were already covered by T011; otherwise, ship after Phase 4.
++
++### Incremental Delivery
++
++1. Foundational schema lands first (T002, T003).
++2. US1 happy path becomes live (T004–T006).
++3. US2 rejection coverage lands (T007–T011).
++4. US3 unauth test confirms behavior (T012).
++5. Polish phase (T013–T015) gates the merge.
++
++---
++
++## Notes
++
++- The four rejection conditions (US2) and the unauth condition (US3) are all enforced by code already required by US1's correctness; US2/US3 mostly add **tests** plus a single implementation tightening task (T011).
++- `[P]` is intentionally absent throughout: this feature concentrates its edits in three files, so honest-sequential beats spurious parallelism.
++- The constitution's ≥80% coverage requirement on changed files is checked in T014; failing T014 means the feature is not done.
++- Conventional-commit prefixes for this work: `feat:` for T002/T003/T005/T006, `test:` for T004/T007–T010/T012, `chore:` or `docs:` for spec/plan/task files themselves.
+diff --git a/target/src/api/main.py b/target/src/api/main.py
+index e4410a6..d1e3915 100644
+--- a/target/src/api/main.py
++++ b/target/src/api/main.py
+@@ -4,7 +4,7 @@ from fastapi import FastAPI
+ 
+ from api.deps import engine
+ from api.models import Base
+-from api.routes import orders, users
++from api.routes import orders, refunds, users
+ 
+ 
+ @asynccontextmanager
+@@ -17,6 +17,7 @@ app = FastAPI(title="benchmark-target", lifespan=lifespan)
+ 
+ app.include_router(users.router)
+ app.include_router(orders.router)
++app.include_router(refunds.router)
+ 
+ 
+ @app.get("/health")
+diff --git a/target/src/api/models.py b/target/src/api/models.py
+index 800d801..189fb56 100644
+--- a/target/src/api/models.py
++++ b/target/src/api/models.py
+@@ -32,10 +32,17 @@ class Order(Base):
+         DateTime, default=datetime.utcnow, nullable=False
+     )
+ 
++    refunded_at: Mapped[datetime | None] = mapped_column(
++        DateTime, nullable=True, default=None
++    )
++
+     user: Mapped[User] = relationship(back_populates="orders")
+     items: Mapped[list["OrderItem"]] = relationship(
+         back_populates="order", cascade="all, delete-orphan"
+     )
++    refund: Mapped["Refund | None"] = relationship(
++        back_populates="order", uselist=False, cascade="all, delete-orphan"
++    )
+ 
+ 
+ class OrderItem(Base):
+@@ -48,3 +55,18 @@ class OrderItem(Base):
+     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
+ 
+     order: Mapped[Order] = relationship(back_populates="items")
++
++
++class Refund(Base):
++    __tablename__ = "refunds"
++
++    id: Mapped[int] = mapped_column(Integer, primary_key=True)
++    order_id: Mapped[int] = mapped_column(
++        ForeignKey("orders.id"), nullable=False, unique=True
++    )
++    amount: Mapped[int] = mapped_column(Integer, nullable=False)
++    created_at: Mapped[datetime] = mapped_column(
++        DateTime, default=datetime.utcnow, nullable=False
++    )
++
++    order: Mapped[Order] = relationship(back_populates="refund")
+diff --git a/target/src/api/routes/refunds.py b/target/src/api/routes/refunds.py
+new file mode 100644
+index 0000000..39ad040
+--- /dev/null
++++ b/target/src/api/routes/refunds.py
+@@ -0,0 +1,49 @@
++from datetime import datetime, timedelta
++
++from fastapi import APIRouter, Depends, HTTPException
++from pydantic import BaseModel
++from sqlalchemy.orm import Session
++
++from api.deps import get_current_user, get_db
++from api.models import Order, Refund, User
++
++router = APIRouter(prefix="/orders", tags=["refunds"])
++
++REFUND_WINDOW = timedelta(days=30)
++
++
++class RefundOut(BaseModel):
++    id: int
++    order_id: int
++    amount: int
++    created_at: str
++
++
++@router.post("/{order_id}/refund", response_model=RefundOut, status_code=201)
++def refund_order(
++    order_id: int,
++    db: Session = Depends(get_db),
++    user: User = Depends(get_current_user),
++) -> RefundOut:
++    order = db.get(Order, order_id)
++    if order is None:
++        raise HTTPException(status_code=404, detail="order not found")
++    if order.user_id != user.id:
++        raise HTTPException(status_code=403, detail="forbidden")
++    if datetime.utcnow() - order.created_at > REFUND_WINDOW:
++        raise HTTPException(status_code=400, detail="refund window expired")
++    if order.refunded_at is not None:
++        raise HTTPException(status_code=409, detail="order already refunded")
++
++    refund = Refund(order_id=order.id, amount=order.total)
++    order.refunded_at = datetime.utcnow()
++    db.add(refund)
++    db.commit()
++    db.refresh(refund)
++
++    return RefundOut(
++        id=refund.id,
++        order_id=refund.order_id,
++        amount=refund.amount,
++        created_at=refund.created_at.isoformat(),
++    )
+diff --git a/target/tests/test_refunds.py b/target/tests/test_refunds.py
+new file mode 100644
+index 0000000..07096a7
+--- /dev/null
++++ b/target/tests/test_refunds.py
+@@ -0,0 +1,130 @@
++from datetime import datetime, timedelta
++
++from sqlalchemy.orm import sessionmaker
++
++from api.models import Order, Refund
++
++
++def _make_user(client, email="u@example.com", name="U"):
++    resp = client.post("/users", json={"email": email, "name": name})
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def _make_order(client, user_id, unit_price=10.00):
++    resp = client.post(
++        "/orders",
++        headers={"X-User-Id": str(user_id)},
++        json={"items": [{"sku": "A", "quantity": 1, "unit_price": unit_price}]},
++    )
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def test_refund_happy_path_returns_refund_record(client):
++    user = _make_user(client, email="happy@example.com")
++    order = _make_order(client, user["id"], unit_price=12.50)
++
++    resp = client.post(
++        f"/orders/{order['id']}/refund",
++        headers={"X-User-Id": str(user["id"])},
++    )
++
++    assert resp.status_code == 201
++    body = resp.json()
++    assert body["order_id"] == order["id"]
++    assert body["amount"] == order["total"]
++    assert isinstance(body["id"], int)
++    assert isinstance(body["created_at"], str) and body["created_at"]
++
++
++def test_refund_returns_404_when_order_missing(client):
++    user = _make_user(client, email="missing@example.com")
++
++    resp = client.post(
++        "/orders/999999/refund",
++        headers={"X-User-Id": str(user["id"])},
++    )
++
++    assert resp.status_code == 404
++    assert resp.json()["detail"] == "order not found"
++
++
++def test_refund_returns_403_when_not_owner(client):
++    owner = _make_user(client, email="owner@example.com")
++    other = _make_user(client, email="other@example.com")
++    order = _make_order(client, owner["id"])
++
++    resp = client.post(
++        f"/orders/{order['id']}/refund",
++        headers={"X-User-Id": str(other["id"])},
++    )
++
++    assert resp.status_code == 403
++    assert resp.json()["detail"] == "forbidden"
++
++
++def test_refund_returns_400_when_outside_30_day_window(client, db_engine):
++    user = _make_user(client, email="old@example.com")
++    order = _make_order(client, user["id"])
++
++    session_factory = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)
++    with session_factory() as session:
++        db_order = session.get(Order, order["id"])
++        db_order.created_at = datetime.utcnow() - timedelta(days=31)
++        session.commit()
++
++    resp = client.post(
++        f"/orders/{order['id']}/refund",
++        headers={"X-User-Id": str(user["id"])},
++    )
++
++    assert resp.status_code == 400
++    assert resp.json()["detail"] == "refund window expired"
++
++    with session_factory() as session:
++        db_order = session.get(Order, order["id"])
++        assert db_order.refunded_at is None
++        assert (
++            session.query(Refund).filter_by(order_id=order["id"]).count() == 0
++        )
++
++
++def test_refund_returns_409_when_already_refunded(client, db_engine):
++    user = _make_user(client, email="twice@example.com")
++    order = _make_order(client, user["id"])
++
++    first = client.post(
++        f"/orders/{order['id']}/refund",
++        headers={"X-User-Id": str(user["id"])},
++    )
++    assert first.status_code == 201
++
++    second = client.post(
++        f"/orders/{order['id']}/refund",
++        headers={"X-User-Id": str(user["id"])},
++    )
++
++    assert second.status_code == 409
++    assert second.json()["detail"] == "order already refunded"
++
++    session_factory = sessionmaker(bind=db_engine, autoflush=False, autocommit=False)
++    with session_factory() as session:
++        assert (
++            session.query(Refund).filter_by(order_id=order["id"]).count() == 1
++        )
++
++
++def test_refund_returns_401_when_unauthenticated(client):
++    user = _make_user(client, email="anon@example.com")
++    order = _make_order(client, user["id"])
++
++    resp = client.post(f"/orders/{order['id']}/refund")
++
++    assert resp.status_code == 401
++
++    follow_up = client.post(
++        f"/orders/{order['id']}/refund",
++        headers={"X-User-Id": str(user["id"])},
++    )
++    assert follow_up.status_code == 201
