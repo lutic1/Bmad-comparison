@@ -24,6 +24,18 @@ def db_engine():
 
 
 @pytest.fixture
+def db_session(db_engine):
+    TestingSessionLocal = sessionmaker(
+        bind=db_engine, autoflush=False, autocommit=False
+    )
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
 def client(db_engine):
     TestingSessionLocal = sessionmaker(
         bind=db_engine, autoflush=False, autocommit=False

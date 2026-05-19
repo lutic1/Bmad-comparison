@@ -1,5 +1,20 @@
+from datetime import datetime, timedelta
+
+from api.models import Order
+
+
 def _make_user(client, email="u@example.com", name="U"):
     resp = client.post("/users", json={"email": email, "name": name})
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def _make_order(client, user_id, unit_price=9.99, quantity=1, sku="A"):
+    resp = client.post(
+        "/orders",
+        headers={"X-User-Id": str(user_id)},
+        json={"items": [{"sku": sku, "quantity": quantity, "unit_price": unit_price}]},
+    )
     assert resp.status_code == 201
     return resp.json()
 
@@ -62,3 +77,74 @@ def test_get_order_returns_owner(client):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == created["id"]
+
+
+def test_refund_requires_auth(client):
+    owner = _make_user(client, email="r-auth@example.com")
+    order = _make_order(client, owner["id"])
+    resp = client.post(f"/orders/{order['id']}/refund")
+    assert resp.status_code == 401
+
+
+def test_refund_unknown_order_returns_404(client):
+    user = _make_user(client, email="r-404@example.com")
+    resp = client.post(
+        "/orders/9999/refund", headers={"X-User-Id": str(user["id"])}
+    )
+    assert resp.status_code == 404
+
+
+def test_refund_forbidden_for_other_user(client):
+    owner = _make_user(client, email="r-owner@example.com")
+    other = _make_user(client, email="r-other@example.com")
+    order = _make_order(client, owner["id"])
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(other["id"])},
+    )
+    assert resp.status_code == 403
+
+
+def test_refund_marks_order_refunded(client):
+    owner = _make_user(client, email="r-happy@example.com")
+    order = _make_order(client, owner["id"], unit_price=9.99, quantity=2)
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(owner["id"])},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["order_id"] == order["id"]
+    assert body["user_id"] == owner["id"]
+    assert body["amount"] == 1998
+    assert isinstance(body["refunded_at"], str) and body["refunded_at"]
+
+
+def test_refund_twice_rejected(client):
+    owner = _make_user(client, email="r-twice@example.com")
+    order = _make_order(client, owner["id"])
+    first = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(owner["id"])},
+    )
+    assert first.status_code == 200
+    second = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(owner["id"])},
+    )
+    assert second.status_code == 400
+
+
+def test_refund_outside_window_rejected(client, db_session):
+    owner = _make_user(client, email="r-old@example.com")
+    order = _make_order(client, owner["id"])
+
+    stored = db_session.get(Order, order["id"])
+    stored.created_at = datetime.utcnow() - timedelta(days=31)
+    db_session.commit()
+
+    resp = client.post(
+        f"/orders/{order['id']}/refund",
+        headers={"X-User-Id": str(owner["id"])},
+    )
+    assert resp.status_code == 400
