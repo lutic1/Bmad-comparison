@@ -1,0 +1,276 @@
+diff --git a/target/CLAUDE.md b/target/CLAUDE.md
+new file mode 100644
+index 0000000..0516ca3
+--- /dev/null
++++ b/target/CLAUDE.md
+@@ -0,0 +1,49 @@
++# Project guardrails
++
++This is a small FastAPI service (users + orders, SQLAlchemy + SQLite,
++pytest). Below are the conventions to respect when making changes.
++
++## Stack
++
++- Python 3.11+, FastAPI, SQLAlchemy 2.x (declarative `Mapped[...]` style),
++  Pydantic v2, pytest.
++- The HTTP layer lives in `src/api/routes/`. Dependencies (`get_db`,
++  `get_current_user`) are in `src/api/deps.py`. Models in
++  `src/api/models.py`.
++
++## Authentication
++
++There is no real auth in this service. Endpoints that need a user accept
++an `X-User-Id` header — see `api.deps.get_current_user`. New protected
++endpoints should depend on the same helper rather than re-implementing
++it.
++
++## Testing
++
++- Every change ships with tests. **Do not commit if `pytest` is failing.**
++- Use the existing `client` fixture in `tests/conftest.py` for HTTP
++  tests. It already wires an in-memory SQLite per test.
++- Prefer covering one behaviour per test over one giant test.
++
++## Code style
++
++- Follow the patterns already in the repo: small route functions,
++  Pydantic models for request/response shapes, business logic inline in
++  the route when it's a few lines, factored out when it isn't.
++- No new third-party dependencies without a clear reason. Stdlib first.
++- Type hints on public functions and route handlers.
++
++## Database
++
++- SQLite via SQLAlchemy. Schema is created from `Base.metadata` at
++  startup; there are no migrations. If you add or change a column,
++  the operator will wipe `app.db` between runs — don't bother writing
++  a migration.
++
++## What not to do
++
++- Don't refactor unrelated code "while you're here".
++- Don't introduce abstractions for a single call site.
++- Don't add logging, metrics, tracing, or middleware unless the task
++  asks for it.
++- Don't change `pyproject.toml` lower bounds without a reason.
+diff --git a/target/src/api/rate_limit.py b/target/src/api/rate_limit.py
+new file mode 100644
+index 0000000..708e960
+--- /dev/null
++++ b/target/src/api/rate_limit.py
+@@ -0,0 +1,62 @@
++import os
++import threading
++import time
++from typing import Callable
++
++from fastapi import Header, HTTPException, Request
++
++DEFAULT_LIMIT = int(os.environ.get("RATE_LIMIT_REQUESTS", "60"))
++DEFAULT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
++
++# Counters live in-process; multi-worker deployments get N×limit effective cap.
++_counters: dict[str, tuple[int, float]] = {}
++_lock = threading.Lock()
++
++# Swappable for tests.
++_now: Callable[[], float] = time.monotonic
++
++
++def reset() -> None:
++    with _lock:
++        _counters.clear()
++
++
++def _check(key: str, limit: int, window: int) -> None:
++    now = _now()
++    with _lock:
++        count, window_start = _counters.get(key, (0, now))
++        if now - window_start >= window:
++            count = 0
++            window_start = now
++        count += 1
++        _counters[key] = (count, window_start)
++        if count > limit:
++            retry_after = max(1, int(window - (now - window_start)))
++            raise HTTPException(
++                status_code=429,
++                detail="rate limit exceeded",
++                headers={"Retry-After": str(retry_after)},
++            )
++
++
++def rate_limit_ip(limit: int, window: int):
++    def dep(request: Request) -> None:
++        ip = request.client.host if request.client else "unknown"
++        _check(f"ip:{ip}:{request.url.path}", limit, window)
++
++    return dep
++
++
++def rate_limit_user(limit: int, window: int):
++    def dep(
++        request: Request,
++        x_user_id: int | None = Header(default=None),
++    ) -> None:
++        if x_user_id is not None:
++            key = f"user:{x_user_id}:{request.url.path}"
++        else:
++            ip = request.client.host if request.client else "unknown"
++            key = f"ip:{ip}:{request.url.path}"
++        _check(key, limit, window)
++
++    return dep
+diff --git a/target/src/api/routes/orders.py b/target/src/api/routes/orders.py
+index d6216be..304bd6d 100644
+--- a/target/src/api/routes/orders.py
++++ b/target/src/api/routes/orders.py
+@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
+ 
+ from api.deps import get_current_user, get_db
+ from api.models import Order, OrderItem, User
++from api.rate_limit import DEFAULT_LIMIT, DEFAULT_WINDOW, rate_limit_user
+ 
+ router = APIRouter(prefix="/orders", tags=["orders"])
+ 
+@@ -41,7 +42,12 @@ class OrderOut(BaseModel):
+     items: list[OrderItemOut]
+ 
+ 
+-@router.post("", response_model=OrderOut, status_code=201)
++@router.post(
++    "",
++    response_model=OrderOut,
++    status_code=201,
++    dependencies=[Depends(rate_limit_user(DEFAULT_LIMIT, DEFAULT_WINDOW))],
++)
+ def create_order(
+     payload: OrderCreate,
+     db: Session = Depends(get_db),
+@@ -82,7 +88,11 @@ def create_order(
+     )
+ 
+ 
+-@router.get("/{order_id}", response_model=OrderOut)
++@router.get(
++    "/{order_id}",
++    response_model=OrderOut,
++    dependencies=[Depends(rate_limit_user(DEFAULT_LIMIT, DEFAULT_WINDOW))],
++)
+ def get_order(
+     order_id: int,
+     db: Session = Depends(get_db),
+diff --git a/target/src/api/routes/users.py b/target/src/api/routes/users.py
+index 04d45db..442a205 100644
+--- a/target/src/api/routes/users.py
++++ b/target/src/api/routes/users.py
+@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
+ 
+ from api.deps import get_db
+ from api.models import User
++from api.rate_limit import DEFAULT_LIMIT, DEFAULT_WINDOW, rate_limit_ip
+ 
+ router = APIRouter(prefix="/users", tags=["users"])
+ 
+@@ -22,7 +23,12 @@ class UserRead(BaseModel):
+         from_attributes = True
+ 
+ 
+-@router.post("", response_model=UserRead, status_code=201)
++@router.post(
++    "",
++    response_model=UserRead,
++    status_code=201,
++    dependencies=[Depends(rate_limit_ip(DEFAULT_LIMIT, DEFAULT_WINDOW))],
++)
+ def create_user(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+     existing = db.query(User).filter(User.email == payload.email).one_or_none()
+     if existing is not None:
+@@ -34,7 +40,11 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+     return user
+ 
+ 
+-@router.get("/{user_id}", response_model=UserRead)
++@router.get(
++    "/{user_id}",
++    response_model=UserRead,
++    dependencies=[Depends(rate_limit_ip(DEFAULT_LIMIT, DEFAULT_WINDOW))],
++)
+ def get_user(user_id: int, db: Session = Depends(get_db)) -> User:
+     user = db.get(User, user_id)
+     if user is None:
+diff --git a/target/tests/test_rate_limit.py b/target/tests/test_rate_limit.py
+new file mode 100644
+index 0000000..b93a72e
+--- /dev/null
++++ b/target/tests/test_rate_limit.py
+@@ -0,0 +1,69 @@
++import pytest
++
++from api import rate_limit
++
++
++@pytest.fixture(autouse=True)
++def _reset_rate_limit():
++    rate_limit.reset()
++    yield
++    rate_limit.reset()
++
++
++def _make_user(client, email):
++    resp = client.post("/users", json={"email": email, "name": "x"})
++    assert resp.status_code == 201
++    return resp.json()
++
++
++def test_under_limit_does_not_429(client):
++    for _ in range(rate_limit.DEFAULT_LIMIT):
++        resp = client.get("/users/99999")
++        assert resp.status_code != 429
++    assert resp.status_code == 404
++
++
++def test_over_limit_public_returns_429(client):
++    for _ in range(rate_limit.DEFAULT_LIMIT):
++        client.get("/users/99999")
++    resp = client.get("/users/99999")
++    assert resp.status_code == 429
++    assert "Retry-After" in resp.headers
++
++
++def test_per_user_keying_on_orders(client):
++    a = _make_user(client, email="a@example.com")
++    b = _make_user(client, email="b@example.com")
++    payload = {"items": [{"sku": "S", "quantity": 1, "unit_price": 1.0}]}
++    for _ in range(rate_limit.DEFAULT_LIMIT):
++        resp = client.post(
++            "/orders", headers={"X-User-Id": str(a["id"])}, json=payload
++        )
++        assert resp.status_code != 429
++    over = client.post(
++        "/orders", headers={"X-User-Id": str(a["id"])}, json=payload
++    )
++    assert over.status_code == 429
++    b_resp = client.post(
++        "/orders", headers={"X-User-Id": str(b["id"])}, json=payload
++    )
++    assert b_resp.status_code == 201
++
++
++def test_window_resets(client, monkeypatch):
++    start = rate_limit._now()
++    for _ in range(rate_limit.DEFAULT_LIMIT):
++        client.get("/users/99999")
++    over = client.get("/users/99999")
++    assert over.status_code == 429
++    monkeypatch.setattr(
++        rate_limit, "_now", lambda: start + rate_limit.DEFAULT_WINDOW + 1
++    )
++    after = client.get("/users/99999")
++    assert after.status_code != 429
++
++
++def test_health_is_exempt(client):
++    for _ in range(rate_limit.DEFAULT_LIMIT * 3):
++        resp = client.get("/health")
++        assert resp.status_code == 200
